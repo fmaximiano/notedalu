@@ -2,9 +2,24 @@
 base = "light"
 primaryColor = "#3157D5"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F6F7FB"
+secondaryBackgroundColor = "#F4F6FA"
 textColor = "#172033"
-font = "sans serif"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap, sans-serif"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap, sans-serif"
+baseRadius = "0.65rem"
+borderColor = "#E3E7EF"
+showWidgetBorder = true
+linkColor = "#3157D5"
+
+[theme.sidebar]
+backgroundColor = "#F7F8FB"
+secondaryBackgroundColor = "#FFFFFF"
 
 [server]
 headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

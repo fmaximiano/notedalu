@@ -1,4 +1,4 @@
-name: Python smoke test
+name: Testes
 
 on:
   push:
@@ -6,12 +6,17 @@ on:
   pull_request:
 
 jobs:
-  syntax:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile app
-        run: python -m py_compile app.py
+          cache: pip
+      - name: Instalar dependências
+        run: pip install -r requirements.txt pytest
+      - name: Compilar
+        run: python -m py_compile app.py notedalu/*.py
+      - name: Testes
+        run: python -m pytest -q
