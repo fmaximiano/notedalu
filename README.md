@@ -1,67 +1,59 @@
 # Note da Lu — comparador racional de notebooks
 
-Aplicação em **Python + Streamlit** para comparar notebooks, estabelecer requisitos mínimos e construir um ranking de compra personalizado.
+Aplicação em **Python + Streamlit** para comparar notebooks, definir requisitos mínimos, ponderar o que importa e chegar a um ranking explicado — com cada nota rastreável até a especificação que a originou.
 
-## Fluxo de decisão
+## Páginas
 
-O sistema separa quatro etapas:
+| Página | Para quê |
+|---|---|
+| **Início** | Situação da decisão (líder, margem, preços faltando), roteiro em 5 passos e panorama do ranking. |
+| **Comparar** | Ficha lado a lado (essencial ou completa), colunas em ordem de ranking, células coloridas pela nota do critério; aba **Duelo** compara dois notebooks critério a critério, em pontos do total. |
+| **Pesos** | Peso de 0 a 10 por critério, distribuição da importância por grupo, perfis prontos e personalizados, nota para dados ausentes. |
+| **Notas** | Mapa de calor de todas as notas, regra de cada critério e ajuste manual (com indicação do que é manual ou ausente). |
+| **Ranking** | Pódio, composição da nota por grupo, nota técnica (sem preço), requisitos, robustez entre perfis e gráfico de custo-benefício (fronteira de Pareto). |
+| **Resumo** | Um cartão por notebook: resumo, specs-chave, pontos fortes/fracos relativos e links. |
+| **Equipamentos** | Lista, edição rápida de preços e links, cadastro/edição completo (inclusive “novo a partir de outro”), backup e restauração. |
 
-1. **Especificações** — o que cada equipamento realmente oferece.
-2. **Requisitos mínimos** — condições obrigatórias que podem eliminar uma opção.
-3. **Pesos e notas** — importância de cada critério e qualidade da configuração correspondente.
-4. **Ranking** — média ponderada apenas como apoio à decisão.
+A barra lateral fica disponível em todas as páginas: **perfil de pesos**, **notebooks em análise** e **requisitos mínimos** (preço máximo, RAM, teto de RAM, SSD, peso, tamanho de tela, carga via USB‑C, RJ‑45).
 
-A página inicial funciona como menu visual e os cards levam diretamente a cada área.
+## Modelo de decisão
 
-## Recursos
+1. **Requisitos mínimos** são eliminatórios: quem não atende continua visível, mas vai para o fim do ranking.
+2. **Notas (0–10)** usam **escalas absolutas** com âncoras explícitas — uma diferença pequena na ficha gera uma diferença pequena na nota.
+3. **Pesos (0–10)** expressam prioridades.
+4. **Nota final (0–100)** = média das notas ponderada pelos pesos.
 
-- home com cards clicáveis;
-- comparação lado a lado de até 10 equipamentos;
-- filtro por grupos de specs;
-- opção de mostrar somente diferenças;
-- critério unificado **GPU**, compatível com gráficos integrados ou dedicados;
-- campos técnicos separados de GPU integrada e GPU dedicada mantidos na ficha;
-- **Preço atual (R$)** como dado e critério opcional de decisão;
-- presets de perfil de compra;
-- pesos apenas para critérios relevantes;
-- notas editáveis com a **spec original visível ao lado**;
-- requisitos mínimos para preço, RAM, SSD, peso e USB-C com carregamento;
-- indicador de **cobertura dos dados** para reduzir falsa precisão;
-- ranking ponderado;
-- gestão de itens: cadastrar, editar e remover;
-- backup/restauração dos cadastros em JSON;
-- resumo executivo;
-- exportação em CSV.
+Regras gerais:
 
-## Pontuação
+- cada característica é contada **uma vez** (16:10 só em *Proporção*; Thunderbolt, vídeo e carga via USB‑C formam um único critério; tipo de RAM e dual-channel formam *Velocidade da RAM*);
+- quando a ficha traz alternativas (“Wi‑Fi 5 ou Wi‑Fi 6”, “220 ou 250 nits”, “TN ou IPS”), vale a **pior hipótese**;
+- dado ausente (“N/D”, “Não informado”, “Não confirmado”) **não** é tratado como “Não”: recebe a nota configurável de dado ausente (padrão 4, levemente conservadora);
+- **preço** é o único critério relativo: a opção mais barata entre as analisadas recebe 10 e as demais `10 × (menor preço ÷ preço)²`;
+- a coluna **Dados conhecidos** mostra quanto do peso de cada notebook está apoiado em informação real.
 
-A nota final é uma média ponderada:
+| Grupo | Critério | Base da nota |
+|---|---|---|
+| Preço | Preço | relativo ao mais barato |
+| Desempenho | Processador | PassMark (60% multinúcleo + 40% núcleo único, escala log) |
+| Desempenho | Gráficos (GPU) | estimativa de 3DMark Time Spy; iGPU Intel considera a CPU e se a RAM é dual-channel |
+| Memória | RAM instalada · Velocidade da RAM · Teto de RAM (upgrade) | GB · tipo + canais · maior RAM alcançável oficialmente |
+| Armazenamento | SSD instalado · Expansão | GB · slots M.2 livres / baia 2,5" |
+| Tela | Resolução · Proporção · Painel · Brilho · Cores · Hz | linhas verticais · 16:10/3:2 · OLED > IPS > WVA > TN · nits · equivalente sRGB · Hz |
+| Conectividade | Webcam · Wi‑Fi · USB‑C · RJ‑45 | resolução · geração (−0,7 para 1×1) · TB/USB4 ou vídeo + carga · possui/não |
+| Mobilidade e construção | Bateria · Peso · Construção | Wh · kg · metal / misto / plástico |
 
-```
-nota = soma(nota_do_critério × peso_do_critério) / soma(pesos)
-```
+A regra completa de cada critério aparece na página **Notas** e no “?” de cada controle em **Pesos**. Qualquer nota pode ser ajustada manualmente; ao editar a especificação de origem, a nota manual daquele critério é descartada.
 
-Critérios com peso 0 são ignorados.
+### Processador
 
-Os requisitos mínimos são tratados separadamente: um equipamento que não atende a um requisito continua visível, mas aparece como **Não atende** no ranking.
+O cadastro aceita os campos **CPU PassMark (multi)** e **CPU PassMark (single)** (valores de [cpubenchmark.net](https://www.cpubenchmark.net)). Sem eles, o app usa uma referência interna para as CPUs da base e, para outras, uma estimativa pelo nome (indicada como estimativa na página Notas).
 
-## GPU
+## Persistência e backup
 
-O campo **GPU** é usado no ranking.
-
-Ao cadastrar um equipamento:
-
-- se houver GPU dedicada, ela pode ser usada como GPU principal;
-- caso contrário, o sistema usa a GPU integrada;
-- os campos técnicos `GPU integrada` e `GPU dedicada` continuam disponíveis na ficha completa.
-
-As notas automáticas de GPUs são heurísticas e podem ser alteradas manualmente.
-
-## Preço
-
-O campo **Preço atual (R$)** é opcional. Quando informado, entra no ranking como critério em que valores menores recebem notas maiores em relação às opções cadastradas.
-
-Sem preços cadastrados, o sistema informa que a avaliação de custo-benefício está incompleta.
+- As alterações (notebooks, pesos, perfis, requisitos e notas manuais) são **salvas automaticamente** em `NOTEDALU_DATA_DIR/estado.json` (padrão `.data/`). Sessões abertas em paralelo se sincronizam ao interagir.
+- `NOTEDALU_PERSIST=0` desliga a gravação em disco (tudo fica só na sessão).
+- **Equipamentos → Backup** baixa/restaura um JSON completo. O formato antigo (lista de notebooks) também é aceito.
+- **Equipamentos → Backup → Restaurar dados originais** volta à base embutida.
 
 ## Executar localmente
 
@@ -70,25 +62,32 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+Testes:
+
+```bash
+pip install pytest
+python -m pytest -q
+```
+
 ## Deploy no Railway
 
 O projeto inclui `Dockerfile`, `start.sh` e `railway.json`.
 
-No Railway:
-
-1. use **Deploy from GitHub Repo**;
-2. selecione `fmaximiano/notedalu`;
-3. deixe **Custom Start Command** vazio;
-4. gere um domínio em **Networking**.
+1. **Deploy from GitHub Repo** → selecione `fmaximiano/notedalu`;
+2. deixe **Custom Start Command** vazio;
+3. gere um domínio em **Networking**;
+4. para os dados sobreviverem a redeploys, crie um **Volume** montado em `/app/.data` (sem volume, o arquivo se perde a cada redeploy — mantenha um backup JSON).
 
 O container usa automaticamente a porta `$PORT`.
 
-## Persistência
+## Estrutura
 
-Os notebooks originais fazem parte do código. Alterações feitas pela interface ficam na sessão do Streamlit.
+```
+app.py                  interface Streamlit (páginas, gráficos, estado)
+notedalu/data.py        base inicial de notebooks e grupos de especificações
+notedalu/scoring.py     leitura das fichas, critérios, notas, ranking (sem Streamlit)
+notedalu/storage.py     persistência em disco e formato de backup
+tests/                  testes do modelo de decisão e testes de fumaça da interface
+```
 
-Para preservar cadastros entre reinicializações/redeploys do Railway, use **Itens cadastrados → Importar / exportar** e salve um backup JSON.
-
-## Dados incompletos
-
-“N/D” indica informação não confirmada. O ranking também exibe a **cobertura dos dados** de cada equipamento, evitando tratar uma opção com muitas lacunas como se tivesse a mesma confiabilidade de outra com ficha bem documentada.
+Links de anúncios e fontes técnicas de cada notebook ficam na ficha (grupo *Compra* e *Observações e fontes*). Preços não vêm cadastrados: informe-os em **Equipamentos → Preços**.

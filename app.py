@@ -1,732 +1,1189 @@
+"""Note da Lu — comparador racional de notebooks (interface Streamlit)."""
+from __future__ import annotations
+
+import hashlib
+import html
 import json
+from types import SimpleNamespace
+
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(page_title="Note da Lu • Comparador de Notebooks", page_icon="💻", layout="wide")
+from notedalu import scoring as sc
+from notedalu import storage
+from notedalu.data import (
+    FIELD_HELP, GROUPS, LONG_TEXT_FIELDS, MODEL_COL, NOTEBOOKS, NUMERIC_FIELDS, PRICE_COL, SPEC_COLUMNS, URL_FIELDS,
+)
 
-st.markdown("""
-<style>
-.block-container {padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1500px}
-[data-testid="stMetric"] {background: #f7f8fb; border: 1px solid #e7e9ef; padding: 14px; border-radius: 14px}
-h1,h2,h3 {letter-spacing: -.02em}
-.small {font-size:.88rem;color:#68707d}
-.badge {display:inline-block;padding:.22rem .55rem;border-radius:999px;background:#eef2ff;margin-right:.3rem;font-size:.78rem}
-</style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="Note da Lu · Comparador de notebooks", page_icon="💻", layout="wide",
+                   initial_sidebar_state="auto")
 
-NOTEBOOKS = [
-{
-"Marca":"Samsung","Modelo / configuração":"Galaxy Book4 15,6” — i5-1335U / 8GB / 512GB","Código / SKU":"NP750XGJ-KG3BR","Ano/geração aproximada":"2024 / Intel 13ª","Sistema operacional":"Windows 11 Home","CPU":"Intel Core i5-1335U","Família / geração CPU":"13ª geração (Raptor Lake-U)","Arquitetura CPU":"Híbrida","Núcleos":10,"P-cores":2,"E-cores":8,"LP E-cores":0,"Threads":12,"Clock base / referência (GHz)":1.3,"Turbo máx. (GHz)":4.6,"Cache L3 (MB)":12,"NPU":"Não","GPU integrada":"Intel Iris Xe Graphics","GPU dedicada":"Não","RAM instalada (GB)":8,"Tipo RAM":"LPDDR4x","Velocidade RAM":"N/D","Configuração RAM":"8GB onboard","RAM soldada":"Sim","Slots RAM físicos":0,"Slots RAM livres":0,"RAM máxima oficial (GB)":8,"Dual-channel de fábrica":"Sim (LPDDR)","Expansão de RAM":"Não","SSD instalado (GB)":512,"Tipo/interface SSD":"NVMe","Formato SSD":"M.2","Slots M.2 totais":2,"Slots M.2 livres":1,"Armazenamento máx./observação":"SSD expansível; 2 slots M.2 no chassi","Tela (pol.)":15.6,"Resolução":"1920×1080","Proporção":"16:9","Painel":"IPS / LED","Acabamento":"Antirreflexo","Touch":"Não","Taxa de atualização (Hz)":60,"Brilho (nits)":"N/D","Cobertura de cores":"N/D","Contraste":"N/D","Webcam":"HD 720p / 1 MP","Tampa de privacidade":"N/D","Teclado ABNT2":"Sim","Teclado numérico":"Sim","Teclado retroiluminado":"Não informado","Touchpad":"Clickpad","Wi‑Fi":"Wi‑Fi 6 (802.11ax) 2×2","Bluetooth":"5.2","Ethernet RJ‑45":"Sim, Gigabit","USB‑A":"2× USB 3.2","USB‑C":"2× USB‑C","Thunderbolt / USB4":"Não informado","USB‑C com vídeo":"Sim (família)","USB‑C com carregamento":"Sim","HDMI":"1× HDMI (família Book4; versão 2.1 em ficha BR)","Leitor de cartões":"microSD","Áudio P2":"1× combo 3,5 mm","Áudio / alto-falantes":"Estéreo 2×2W, Dolby Atmos","Microfones":"Dual array","Bateria (Wh)":54,"Células":"N/D","Autonomia declarada":"N/D","Carregador (W)":45,"Carregamento USB‑C":"Sim","Largura (mm)":356.6,"Profundidade (mm)":229.1,"Espessura (mm)":15.4,"Peso (kg)":1.55,"Material / construção":"Corpo metálico","Cor":"Grafite","TPM":"Sim","Trava de segurança":"Sim","Leitor biométrico":"Não informado","Garantia informada":"12 meses (mercado BR, confirmar anúncio)","Destaques objetivos":"Leve; bateria 54Wh; RJ‑45; 2 USB‑C; segundo slot SSD","Limitações / ressalvas":"RAM de 8GB soldada e sem expansão; brilho/gamut não publicados na ficha deste SKU","Link do anúncio":"https://www.mercadolivre.com.br/notebook-samsung-galaxy-book4-intel-core-i5-1335u-13-ghz-ate-46ghz-12-mb-l3-cache-windows-11-home-8gb-512gb-ssd-iris-xe-156-full-hd-led-155kg/p/MLB37044038","Fonte técnica principal":"https://www.samsung.com/br/computers/samsung-book/galaxy-book4-15-6-inch-i5-8gb-512gb-np750xgj-kg3br/","Fonte complementar":"https://news.samsung.com/br/samsung-lanca-novo-galaxy-book4-no-brasil"
-},
-{
-"Marca":"Acer","Modelo / configuração":"Aspire 16 A16-71M-55H0 — Ultra 5 115U / 16GB / 512GB","Código / SKU":"NX.JQLAL.001","Ano/geração aproximada":"2025 / Core Ultra Série 1","Sistema operacional":"Windows 11 Home 64-bit","CPU":"Intel Core Ultra 5 115U","Família / geração CPU":"Core Ultra Série 1 (Meteor Lake-U)","Arquitetura CPU":"Híbrida + LP E-core","Núcleos":8,"P-cores":2,"E-cores":4,"LP E-cores":2,"Threads":10,"Clock base / referência (GHz)":2.0,"Turbo máx. (GHz)":4.2,"Cache L3 (MB)":10,"NPU":"Intel AI Boost","GPU integrada":"Intel Graphics","GPU dedicada":"Não","RAM instalada (GB)":16,"Tipo RAM":"LPDDR5","Velocidade RAM":"até 6400 MT/s","Configuração RAM":"16GB onboard dual-channel","RAM soldada":"Sim","Slots RAM físicos":0,"Slots RAM livres":0,"RAM máxima oficial (GB)":16,"Dual-channel de fábrica":"Sim","Expansão de RAM":"Não","SSD instalado (GB)":512,"Tipo/interface SSD":"NVMe PCIe 4.0 x4","Formato SSD":"M.2 2280","Slots M.2 totais":1,"Slots M.2 livres":0,"Armazenamento máx./observação":"Slot M.2 único; fabricante informa compatibilidade até 1TB","Tela (pol.)":16,"Resolução":"1920×1200","Proporção":"16:10","Painel":"IPS","Acabamento":"Antirreflexo Acer ComfyView","Touch":"Não","Taxa de atualização (Hz)":60,"Brilho (nits)":300,"Cobertura de cores":"45% NTSC","Contraste":"1000:1","Webcam":"Full HD 1080p, até 60 fps","Tampa de privacidade":"N/D","Teclado ABNT2":"Sim","Teclado numérico":"Sim","Teclado retroiluminado":"Não","Touchpad":"Precision Touchpad, resistente à umidade","Wi‑Fi":"Wi‑Fi 6E 2×2","Bluetooth":"5.1 ou superior","Ethernet RJ‑45":"Não","USB‑A":"2× USB 3.2 Gen 1 (5Gbps)","USB‑C":"2× USB‑C","Thunderbolt / USB4":"2× Thunderbolt 4","USB‑C com vídeo":"Sim","USB‑C com carregamento":"Sim","HDMI":"1× HDMI 2.1","Leitor de cartões":"Não","Áudio P2":"1× combo 3,5 mm","Áudio / alto-falantes":"2×2W, Acer TrueHarmony","Microfones":"2×, Purified Voice 2.0","Bateria (Wh)":53,"Células":3,"Autonomia declarada":"Até 8 h","Carregador (W)":65,"Carregamento USB‑C":"Sim","Largura (mm)":360.4,"Profundidade (mm)":253.22,"Espessura (mm)":17.95,"Peso (kg)":1.69,"Material / construção":"Alumínio + plástico (anúncio)","Cor":"Cinza aço","TPM":"fTPM","Trava de segurança":"Kensington","Leitor biométrico":"Não","Garantia informada":"12 meses","Destaques objetivos":"16GB rápidos; 16:10 IPS 300 nits; 2× Thunderbolt 4; webcam FHD; NPU","Limitações / ressalvas":"RAM soldada; sem RJ‑45; sem leitor de cartões; apenas um slot M.2","Link do anúncio":"https://www.mercadolivre.com.br/notebook-16-acer-aspire-16-com-tela-wuxga-ips-1610-processador-intel-core-ultra-5-115u-16gb-ram-lpddr5-a-6400mhz-ssd-de-512gb-windows-11-home/p/MLB60328223","Fonte técnica principal":"https://br-store.acer.com/notebook-acer-a16-71m-55h0--cu5115u--16gb--512gb-ssd--wnhpsl64--gray--lcd-16-nx-jqlal-001/p","Fonte complementar":"https://store.acerempresas.com.br/notebook-acer-a16-71m-55h0--cu5115u--16gb--512gb-ssd--wnhpsl64--gray--lcd-16-nx-jqlal-001/p"
-},
-{
-"Marca":"Lenovo","Modelo / configuração":"ThinkPad E14 (Gen 1) — i7-10510U / 8GB / 512GB","Código / SKU":"20RA/20RB (submodelo não informado)","Ano/geração aproximada":"2019–2020 / Intel 10ª","Sistema operacional":"Não confirmado no anúncio","CPU":"Intel Core i7-10510U","Família / geração CPU":"10ª geração (Comet Lake-U)","Arquitetura CPU":"Convencional","Núcleos":4,"P-cores":4,"E-cores":0,"LP E-cores":0,"Threads":8,"Clock base / referência (GHz)":1.8,"Turbo máx. (GHz)":4.9,"Cache L3 (MB)":8,"NPU":"Não","GPU integrada":"Intel UHD Graphics","GPU dedicada":"Não determinável (família também teve Radeon 625/RX 640)","RAM instalada (GB)":8,"Tipo RAM":"DDR4","Velocidade RAM":"2666 MT/s","Configuração RAM":"1×8GB SO-DIMM (assumido pelo anúncio)","RAM soldada":"Não","Slots RAM físicos":1,"Slots RAM livres":0,"RAM máxima oficial (GB)":16,"Dual-channel de fábrica":"Não (1 slot físico)","Expansão de RAM":"Sim, substituindo módulo; até 16GB oficial","SSD instalado (GB)":512,"Tipo/interface SSD":"NVMe PCIe 3.0 (família)","Formato SSD":"M.2 2242/2280 conforme submodelo","Slots M.2 totais":1,"Slots M.2 livres":0,"Armazenamento máx./observação":"Até 2 unidades: 1× M.2 + 1× 2,5” SATA, conforme configuração física","Tela (pol.)":14,"Resolução":"1920×1080","Proporção":"16:9","Painel":"TN 220 nits OU IPS 250 nits","Acabamento":"Antirreflexo","Touch":"Não","Taxa de atualização (Hz)":60,"Brilho (nits)":"220 ou 250","Cobertura de cores":"N/D","Contraste":"400:1 (TN) / 700:1 (IPS)","Webcam":"720p","Tampa de privacidade":"Varia por submodelo","Teclado ABNT2":"Provável; confirmar unidade","Teclado numérico":"Não","Teclado retroiluminado":"Opcional / não determinável","Touchpad":"ThinkPad TrackPad + TrackPoint","Wi‑Fi":"Wi‑Fi 5 ou Wi‑Fi 6 conforme placa","Bluetooth":"Conforme placa WLAN","Ethernet RJ‑45":"Sim, Gigabit","USB‑A":"2× USB 3.1 Gen1 + 1× USB 2.0","USB‑C":"1× USB‑C 3.1 Gen1","Thunderbolt / USB4":"Não","USB‑C com vídeo":"Sim (DisplayPort)","USB‑C com carregamento":"Sim","HDMI":"1× HDMI 1.4b","Leitor de cartões":"Não","Áudio P2":"1× combo 3,5 mm","Áudio / alto-falantes":"2×2W, Dolby Advanced Audio","Microfones":"2× array","Bateria (Wh)":45,"Células":"Integrada","Autonomia declarada":"Até 12,8 h (MobileMark 2014; família)","Carregador (W)":65,"Carregamento USB‑C":"Sim","Largura (mm)":325,"Profundidade (mm)":232,"Espessura (mm)":17.9,"Peso (kg)":1.69,"Material / construção":"Varia por tampa; chassi corporativo ThinkPad","Cor":"Preto","TPM":"Sim","Trava de segurança":"Kensington","Leitor biométrico":"Opcional / não determinável","Garantia informada":"Depende do vendedor/estado do equipamento","Destaques objetivos":"Teclado/TrackPoint corporativo; RJ‑45; USB‑C com vídeo/carga; possibilidade de 2º drive SATA","Limitações / ressalvas":"Modelo antigo; submodelo não informado impede determinar painel, WLAN, dGPU e biometria; bateria pode ter desgaste se usado/recondicionado","Link do anúncio":"https://www.mercadolivre.com.br/notebook-lenovo-thinkpad-e14-core-i7-10-8gb-ram-512gb-ssd/up/MLBU3626973561","Fonte técnica principal":"https://psref.lenovo.com/syspool/Sys/PDF/ThinkPad/ThinkPad_E14/ThinkPad_E14_Spec.pdf","Fonte complementar":"https://psref.lenovo.com/syspool/Sys/i_pdf/psref562.pdf"
-},
-{
-"Marca":"ASUS","Modelo / configuração":"Vivobook 16 X1605VA-MB763W — i7-1355U / 16GB / 512GB","Código / SKU":"X1605VA-MB763W","Ano/geração aproximada":"2023 / Intel 13ª","Sistema operacional":"Windows 11 Home","CPU":"Intel Core i7-1355U","Família / geração CPU":"13ª geração (Raptor Lake-U)","Arquitetura CPU":"Híbrida","Núcleos":10,"P-cores":2,"E-cores":8,"LP E-cores":0,"Threads":12,"Clock base / referência (GHz)":1.7,"Turbo máx. (GHz)":5.0,"Cache L3 (MB)":12,"NPU":"Não","GPU integrada":"Intel Iris Xe Graphics","GPU dedicada":"Não","RAM instalada (GB)":16,"Tipo RAM":"DDR4","Velocidade RAM":"3200 MT/s","Configuração RAM":"8GB onboard + 8GB SO-DIMM","RAM soldada":"Parcial (8GB)","Slots RAM físicos":1,"Slots RAM livres":0,"RAM máxima oficial (GB)":16,"Dual-channel de fábrica":"Sim","Expansão de RAM":"Limitada; 8GB soldados + 1 SO-DIMM, máximo oficial 16GB","SSD instalado (GB)":512,"Tipo/interface SSD":"NVMe M.2","Formato SSD":"M.2","Slots M.2 totais":1,"Slots M.2 livres":0,"Armazenamento máx./observação":"1 slot M.2; capacidade depende de SSD substituto","Tela (pol.)":16,"Resolução":"1920×1200","Proporção":"16:10","Painel":"IPS-level","Acabamento":"Antirreflexo","Touch":"Não","Taxa de atualização (Hz)":60,"Brilho (nits)":300,"Cobertura de cores":"45% NTSC","Contraste":"N/D","Webcam":"HD 720p","Tampa de privacidade":"Sim","Teclado ABNT2":"Sim (SKU BR)","Teclado numérico":"Sim","Teclado retroiluminado":"Não","Touchpad":"Precision touchpad","Wi‑Fi":"Wi‑Fi 5 (802.11ac) 1×1","Bluetooth":"5.1","Ethernet RJ‑45":"Não","USB‑A":"2× USB 3.2 Gen1 + 1× USB 2.0","USB‑C":"1× USB 3.2 Gen1 Type‑C","Thunderbolt / USB4":"Não","USB‑C com vídeo":"Não confirmado","USB‑C com carregamento":"Sim (Power Delivery)","HDMI":"1× HDMI 1.4","Leitor de cartões":"Não","Áudio P2":"1× combo 3,5 mm","Áudio / alto-falantes":"SonicMaster estéreo","Microfones":"Integrados; AI Noise Canceling","Bateria (Wh)":42,"Células":3,"Autonomia declarada":"N/D","Carregador (W)":45,"Carregamento USB‑C":"SKU suporta PD, mas inclui carregador DC-in","Largura (mm)":358.7,"Profundidade (mm)":249.5,"Espessura (mm)":19.9,"Peso (kg)":1.88,"Material / construção":"Plástico (família)","Cor":"Cool Silver","TPM":"Firmware TPM","Trava de segurança":"N/D","Leitor biométrico":"Não informado","Garantia informada":"12 meses","Destaques objetivos":"i7-1355U; 16GB em dual-channel; tela 16:10 300 nits; tampa física da webcam","Limitações / ressalvas":"Wi‑Fi 5 1×1; HDMI 1.4; bateria de 42Wh; expansão de RAM limitada a 16GB oficial","Link do anúncio":"https://www.mercadolivre.com.br/notebook-vivobook-16-intel-core-i7-1355u-16gb-ram-512gb-ssd-tela-16-full-hd-windows-11-asus/p/MLB39460220","Fonte técnica principal":"https://b2b.lojaasus.com.br/notebook-asus-vivobook-16-x1605va-mb763w-cool-silver.html","Fonte complementar":"https://www.asus.com/br/laptops/for-home/vivobook/vivobook-16-x1605/techspec/"
-},
-{
-"Marca":"HP","Modelo / configuração":"200 G2i 16” — Core 5 120U / 8GB / 512GB","Código / SKU":"E30QFAT#AK4","Ano/geração aproximada":"2025–2026 / Core Série 1","Sistema operacional":"Windows 11 Home Single Language","CPU":"Intel Core 5 120U","Família / geração CPU":"Intel Core Série 1 (Raptor Lake-U refresh)","Arquitetura CPU":"Híbrida","Núcleos":10,"P-cores":2,"E-cores":8,"LP E-cores":0,"Threads":12,"Clock base / referência (GHz)":1.4,"Turbo máx. (GHz)":5.0,"Cache L3 (MB)":12,"NPU":"Não","GPU integrada":"Intel Graphics","GPU dedicada":"Não","RAM instalada (GB)":8,"Tipo RAM":"DDR5","Velocidade RAM":"5200 MT/s","Configuração RAM":"1×8GB SO-DIMM","RAM soldada":"Não","Slots RAM físicos":2,"Slots RAM livres":1,"RAM máxima oficial (GB)":32,"Dual-channel de fábrica":"Não","Expansão de RAM":"Sim; até 32GB oficial","SSD instalado (GB)":512,"Tipo/interface SSD":"PCIe Gen4 NVMe","Formato SSD":"M.2","Slots M.2 totais":1,"Slots M.2 livres":0,"Armazenamento máx./observação":"Família oferece SSDs até 1TB; substituir SSD para ampliar","Tela (pol.)":16,"Resolução":"1920×1200","Proporção":"16:10","Painel":"IPS / UWVA","Acabamento":"Antirreflexo","Touch":"Não","Taxa de atualização (Hz)":60,"Brilho (nits)":300,"Cobertura de cores":"62,5% sRGB","Contraste":"N/D","Webcam":"FHD 1080p HDR (família/configuração correspondente)","Tampa de privacidade":"N/D","Teclado ABNT2":"Sim (SKU BR)","Teclado numérico":"Sim","Teclado retroiluminado":"Não informado","Touchpad":"Clickpad multitoque","Wi‑Fi":"Wi‑Fi 6 (Realtek 8852BE-VT, configuração comum)","Bluetooth":"5.4 (com Wi‑Fi 6)","Ethernet RJ‑45":"Sim, Gigabit","USB‑A":"2× USB 3.2 Gen1","USB‑C":"2× USB 3.2 Gen2 Type‑C 10Gbps","Thunderbolt / USB4":"Não","USB‑C com vídeo":"Sim, DisplayPort 1.4","USB‑C com carregamento":"Sim, USB Power Delivery","HDMI":"1× HDMI 1.4b","Leitor de cartões":"Não informado","Áudio P2":"1× combo 3,5 mm","Áudio / alto-falantes":"Poly Studio, 2 estéreo","Microfones":"2× array, redução de ruído por IA","Bateria (Wh)":41,"Células":3,"Autonomia declarada":"N/D","Carregador (W)":65,"Carregamento USB‑C":"Sim","Largura (mm)":358.6,"Profundidade (mm)":251.8,"Espessura (mm)":18.9,"Peso (kg)":1.72,"Material / construção":"Plástico / linha corporativa básica","Cor":"Prata","TPM":"Sim","Trava de segurança":"Sim","Leitor biométrico":"Não informado","Garantia informada":"12 meses (confirmar anúncio)","Destaques objetivos":"RAM expansível até 32GB; 2× USB‑C 10Gbps com DP/PD; RJ‑45; tela 16:10 300 nits; webcam FHD","Limitações / ressalvas":"8GB em single-channel de fábrica; bateria 41Wh; algumas características variam por WLAN/lote","Link do anúncio":"https://www.mercadolivre.com.br/notebook-hp-200-g2i-intel-core-5-120u-16-intel-graphics-ram-8gb-1x8gb-ddr5-5200-ssd-512gb-pcie4x4-windows-11-home-sl-e30qfatak4/p/MLB78311028","Fonte técnica principal":"https://support.hp.com/br-pt/document/ish_13834797-13835475-16","Fonte complementar":"https://www.hp.com/za-en/products/laptops/product-details/product-specifications/2104283715"
-},
-{
-"Marca":"Dell","Modelo / configuração":"Dell 15 DC15-I51334U-A50 — i5-1334U / 8GB / 512GB","Código / SKU":"DC15-I51334U-A50 / 210-BWBG","Ano/geração aproximada":"2026 / Intel 13ª","Sistema operacional":"Windows 11 Home","CPU":"Intel Core i5-1334U","Família / geração CPU":"13ª geração (Raptor Lake-U)","Arquitetura CPU":"Híbrida","Núcleos":10,"P-cores":2,"E-cores":8,"LP E-cores":0,"Threads":12,"Clock base / referência (GHz)":0.9,"Turbo máx. (GHz)":4.6,"Cache L3 (MB)":12,"NPU":"Não","GPU integrada":"Intel UHD Graphics (ficha comercial)","GPU dedicada":"Não","RAM instalada (GB)":8,"Tipo RAM":"DDR5","Velocidade RAM":"4400 MT/s","Configuração RAM":"1×8GB SO-DIMM","RAM soldada":"Não","Slots RAM físicos":2,"Slots RAM livres":1,"RAM máxima oficial (GB)":16,"Dual-channel de fábrica":"Não","Expansão de RAM":"Sim; até 16GB informado","SSD instalado (GB)":512,"Tipo/interface SSD":"PCIe NVMe","Formato SSD":"M.2","Slots M.2 totais":1,"Slots M.2 livres":0,"Armazenamento máx./observação":"Substituição do M.2 para ampliar","Tela (pol.)":15.6,"Resolução":"1920×1080","Proporção":"16:9","Painel":"WVA","Acabamento":"Antirreflexo","Touch":"Não","Taxa de atualização (Hz)":120,"Brilho (nits)":250,"Cobertura de cores":"N/D","Contraste":"600:1","Webcam":"HD 720p widescreen","Tampa de privacidade":"N/D","Teclado ABNT2":"Sim","Teclado numérico":"Sim","Teclado retroiluminado":"Não","Touchpad":"Precision touchpad","Wi‑Fi":"Wi‑Fi 6 Realtek RTL8852BE 2×2","Bluetooth":"Sim (placa combinada)","Ethernet RJ‑45":"Não","USB‑A":"1× USB 3.2 Gen1 + 1× USB 2.0","USB‑C":"1× USB 3.2 Gen1 Type‑C (dados)","Thunderbolt / USB4":"Não","USB‑C com vídeo":"Não","USB‑C com carregamento":"Não","HDMI":"1× HDMI 1.4","Leitor de cartões":"SD","Áudio P2":"1× combo 3,5 mm","Áudio / alto-falantes":"Waves MaxxAudio Pro","Microfones":"1× digital","Bateria (Wh)":41,"Células":3,"Autonomia declarada":"Não especificada","Carregador (W)":65,"Carregamento USB‑C":"Não","Largura (mm)":358.5,"Profundidade (mm)":235.5,"Espessura (mm)":18.9,"Peso (kg)":1.63,"Material / construção":"Plástico","Cor":"Preto Carbono","TPM":"Sim","Trava de segurança":"N/D","Leitor biométrico":"Não","Garantia informada":"12 meses","Destaques objetivos":"Tela 120Hz; RAM expansível; leitor SD; peso relativamente baixo","Limitações / ressalvas":"8GB single-channel; USB‑C apenas dados; sem RJ‑45; bateria 41Wh; limite oficial de RAM 16GB","Link do anúncio":"https://www.mercadolivre.com.br/notebook-dell-dc15-i51334u-a50-156-fhd-i5-8gb-512gb-win-11/p/MLB70040749","Fonte técnica principal":"https://www.magazineluiza.com.br/notebook-dell-15-dc15-i51334u-a50-intel-core-i5-8gb-ram-512gb-ssd-156-full-hd-windows-11-210-bwbg/p/241623300/in/nodl/","Fonte complementar":"https://quenotebookcomprar.com.br/dell-15-dc15-i51334u-a50/"
-},
-{
-"Marca":"Dell","Modelo / configuração":"Dell 15 DC15-I51334U-M80 — i5-1334U / 16GB / 1TB","Código / SKU":"DC15-I51334U-M80","Ano/geração aproximada":"2026 / Intel 13ª","Sistema operacional":"Windows 11 Home","CPU":"Intel Core i5-1334U","Família / geração CPU":"13ª geração (Raptor Lake-U)","Arquitetura CPU":"Híbrida","Núcleos":10,"P-cores":2,"E-cores":8,"LP E-cores":0,"Threads":12,"Clock base / referência (GHz)":0.9,"Turbo máx. (GHz)":4.6,"Cache L3 (MB)":12,"NPU":"Não","GPU integrada":"Intel UHD Graphics (ficha comercial)","GPU dedicada":"Não","RAM instalada (GB)":16,"Tipo RAM":"DDR5","Velocidade RAM":"4400 MT/s","Configuração RAM":"1×16GB SO-DIMM","RAM soldada":"Não","Slots RAM físicos":2,"Slots RAM livres":1,"RAM máxima oficial (GB)":16,"Dual-channel de fábrica":"Não (1×16GB)","Expansão de RAM":"Limite de 16GB informado; slot físico livre sem ganho oficial de capacidade","SSD instalado (GB)":1024,"Tipo/interface SSD":"PCIe NVMe","Formato SSD":"M.2","Slots M.2 totais":1,"Slots M.2 livres":0,"Armazenamento máx./observação":"1TB de fábrica; ampliar requer substituição","Tela (pol.)":15.6,"Resolução":"1920×1080","Proporção":"16:9","Painel":"WVA","Acabamento":"Antirreflexo","Touch":"Não","Taxa de atualização (Hz)":120,"Brilho (nits)":250,"Cobertura de cores":"N/D","Contraste":"600:1","Webcam":"HD 720p widescreen","Tampa de privacidade":"N/D","Teclado ABNT2":"Sim","Teclado numérico":"Sim","Teclado retroiluminado":"Não","Touchpad":"Precision touchpad","Wi‑Fi":"Wi‑Fi 6 Realtek RTL8852BE 2×2","Bluetooth":"Sim (placa combinada)","Ethernet RJ‑45":"Não","USB‑A":"1× USB 3.2 Gen1 + 1× USB 2.0","USB‑C":"1× USB 3.2 Gen1 Type‑C (dados)","Thunderbolt / USB4":"Não","USB‑C com vídeo":"Não","USB‑C com carregamento":"Não","HDMI":"1× HDMI 1.4","Leitor de cartões":"SD","Áudio P2":"1× combo 3,5 mm","Áudio / alto-falantes":"Waves MaxxAudio Pro","Microfones":"1× digital","Bateria (Wh)":41,"Células":3,"Autonomia declarada":"Não especificada","Carregador (W)":65,"Carregamento USB‑C":"Não","Largura (mm)":358.5,"Profundidade (mm)":235.5,"Espessura (mm)":18.9,"Peso (kg)":1.63,"Material / construção":"Plástico","Cor":"Preto Carbono","TPM":"Sim","Trava de segurança":"N/D","Leitor biométrico":"Não","Garantia informada":"12 meses","Destaques objetivos":"16GB e 1TB de fábrica; tela 120Hz; leitor SD; peso relativamente baixo","Limitações / ressalvas":"16GB em módulo único; USB‑C apenas dados; sem RJ‑45; bateria 41Wh; limite de RAM oficial já atingido","Link do anúncio":"https://www.mercadolivre.com.br/dell-inspiron-dc15-i51334u-m80-notebook-156-i5-16gb-1tb-ssd-tela-antirreflexo/p/MLB76590114","Fonte técnica principal":"https://www.magazineluiza.com.br/notebook-dell-15-dc15-i51334u-m80-15-6-full-hd-13a-gen-intel-core-i5-16gb-1tb-ssd-win-11-preto-carbono/p/jc0448k2f9/in/nodl/","Fonte complementar":"https://www.kabum.com.br/produto/1028017/notebook-dell-inspiron-dc15-i51334u-m80-15-6-full-hd-13-gen-intel-core-i5-16gb-1tb-ssd-win-11-preto-carbono"
+esc = html.escape
+
+# Paleta categórica validada (ordem fixa) para os grupos de critérios; status reservado para requisitos.
+GROUP_COLORS = dict(zip(sc.CRITERIA_GROUPS, ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7"]))
+COLOR_A, COLOR_B = "#2a78d6", "#eb6834"
+GOOD, BAD = "#0ca30c", "#d03b3b"
+INK, INK_2, MUTED, GRID = "#172033", "#4b5565", "#6b7385", "#e6e8ee"
+CUSTOM_LABEL = "Personalizado"
+MISSING_BG = "#eeede9"
+WIDGET_PREFIXES = ("w_", "req_", "ed_", "f_")
+
+ESSENTIAL_COLUMNS = {src for c in sc.CRITERIA for src in c.sources} | {
+    "Tela (pol.)", "HDMI", "Leitor de cartões", "Teclado numérico", "Teclado retroiluminado", "Sistema operacional",
+    "Garantia informada", "Link do anúncio", "Limitações / ressalvas", "NPU",
 }
-]
+PRIMARY_SOURCE = {c.sources[0]: c.key for c in sc.CRITERIA}
 
-SUMMARY = {
-"Samsung Galaxy Book4":"Leve, bateria de 54 Wh, RJ‑45, dois USB‑C e segundo slot M.2. A limitação mais importante é a RAM de 8 GB soldada.",
-"Acer Aspire 16":"Conjunto moderno com 16 GB LPDDR5, tela 16:10 de 300 nits, Thunderbolt 4, webcam FHD e NPU. RAM não é expansível.",
-"Lenovo ThinkPad E14":"Construção e ergonomia corporativa, RJ‑45 e USB‑C com vídeo/carga. É uma plataforma muito mais antiga; submodelo incompleto gera incerteza.",
-"ASUS Vivobook 16":"i7-1355U, 16 GB em dual-channel e tela 16:10 de 300 nits. Bateria pequena e conectividade menos moderna.",
-"HP 200 G2i":"RAM DDR5 expansível até 32 GB, dois USB‑C 10 Gbps com vídeo/carga, RJ‑45 e webcam FHD. Sai de fábrica com 8 GB single-channel.",
-"Dell A50":"Tela 120 Hz e RAM expansível, mas apenas 8 GB de fábrica, USB‑C somente dados e bateria de 41 Wh.",
-"Dell M80":"Mesmo chassi do A50, com 16 GB e SSD de 1 TB. Tela 120 Hz; USB‑C continua limitado a dados e a bateria é de 41 Wh."
-}
 
-# ---------------------------------------------------------------------
-# Estrutura de critérios e modelo de decisão
-# ---------------------------------------------------------------------
-MODEL_COL = "Modelo / configuração"
-EXTRA_COLUMNS = ["GPU", "Preço atual (R$)"]
-SPEC_COLUMNS = list(NOTEBOOKS[0].keys()) + [c for c in EXTRA_COLUMNS if c not in NOTEBOOKS[0]]
-
-GROUPS = {
-    "Identificação":["Marca","Modelo / configuração","Código / SKU","Ano/geração aproximada","Sistema operacional"],
-    "Compra":["Preço atual (R$)"],
-    "Processador e gráficos":["CPU","Família / geração CPU","Arquitetura CPU","Núcleos","P-cores","E-cores","LP E-cores","Threads","Clock base / referência (GHz)","Turbo máx. (GHz)","Cache L3 (MB)","NPU","GPU","GPU integrada","GPU dedicada"],
-    "Memória":["RAM instalada (GB)","Tipo RAM","Velocidade RAM","Configuração RAM","RAM soldada","Slots RAM físicos","Slots RAM livres","RAM máxima oficial (GB)","Dual-channel de fábrica","Expansão de RAM"],
-    "Armazenamento":["SSD instalado (GB)","Tipo/interface SSD","Formato SSD","Slots M.2 totais","Slots M.2 livres","Armazenamento máx./observação"],
-    "Tela":["Tela (pol.)","Resolução","Proporção","Painel","Acabamento","Touch","Taxa de atualização (Hz)","Brilho (nits)","Cobertura de cores","Contraste"],
-    "Câmera e entrada":["Webcam","Tampa de privacidade","Teclado ABNT2","Teclado numérico","Teclado retroiluminado","Touchpad"],
-    "Conectividade":["Wi‑Fi","Bluetooth","Ethernet RJ‑45","USB‑A","USB‑C","Thunderbolt / USB4","USB‑C com vídeo","USB‑C com carregamento","HDMI","Leitor de cartões","Áudio P2"],
-    "Áudio":["Áudio / alto-falantes","Microfones"],
-    "Bateria e energia":["Bateria (Wh)","Células","Autonomia declarada","Carregador (W)","Carregamento USB‑C"],
-    "Dimensões e construção":["Largura (mm)","Profundidade (mm)","Espessura (mm)","Peso (kg)","Material / construção","Cor"],
-    "Segurança e suporte":["TPM","Trava de segurança","Leitor biométrico","Garantia informada"],
-    "Observações e fontes":["Destaques objetivos","Limitações / ressalvas","Link do anúncio","Fonte técnica principal","Fonte complementar"],
-}
-
-IMPORTANT_CRITERIA = [
-    "Preço atual (R$)",
-    "CPU","GPU",
-    "RAM instalada (GB)","Tipo RAM","Dual-channel de fábrica","Expansão de RAM","RAM máxima oficial (GB)",
-    "SSD instalado (GB)","Tipo/interface SSD","Slots M.2 livres",
-    "Resolução","Proporção","Painel","Taxa de atualização (Hz)","Brilho (nits)","Cobertura de cores",
-    "Webcam","Wi‑Fi","Thunderbolt / USB4","USB‑C com vídeo","USB‑C com carregamento",
-    "Bateria (Wh)","Peso (kg)","Material / construção",
-]
-
-IMPORTANT_GROUPS = {
-    "Preço":["Preço atual (R$)"],
-    "Desempenho":["CPU","GPU"],
-    "Memória":["RAM instalada (GB)","Tipo RAM","Dual-channel de fábrica","Expansão de RAM","RAM máxima oficial (GB)"],
-    "Armazenamento":["SSD instalado (GB)","Tipo/interface SSD","Slots M.2 livres"],
-    "Tela":["Resolução","Proporção","Painel","Taxa de atualização (Hz)","Brilho (nits)","Cobertura de cores"],
-    "Comunicação e portas":["Webcam","Wi‑Fi","Thunderbolt / USB4","USB‑C com vídeo","USB‑C com carregamento"],
-    "Mobilidade e construção":["Bateria (Wh)","Peso (kg)","Material / construção"],
-}
-
-DEFAULT_WEIGHTS = {
-    "Preço atual (R$)":9,
-    "CPU":9,"GPU":4,
-    "RAM instalada (GB)":9,"Tipo RAM":4,"Dual-channel de fábrica":5,"Expansão de RAM":7,"RAM máxima oficial (GB)":5,
-    "SSD instalado (GB)":5,"Tipo/interface SSD":4,"Slots M.2 livres":4,
-    "Resolução":6,"Proporção":4,"Painel":7,"Taxa de atualização (Hz)":3,"Brilho (nits)":6,"Cobertura de cores":4,
-    "Webcam":3,"Wi‑Fi":4,"Thunderbolt / USB4":4,"USB‑C com vídeo":4,"USB‑C com carregamento":5,
-    "Bateria (Wh)":8,"Peso (kg)":7,"Material / construção":4,
-}
-
-PRESETS = {
-    "Equilibrado": DEFAULT_WEIGHTS,
-    "Custo-benefício": {**DEFAULT_WEIGHTS,"Preço atual (R$)":10,"CPU":8,"RAM instalada (GB)":8,"Painel":6,"Bateria (Wh)":6},
-    "Mobilidade": {**DEFAULT_WEIGHTS,"Preço atual (R$)":6,"Bateria (Wh)":10,"Peso (kg)":10,"USB‑C com carregamento":8,"Material / construção":6,"Taxa de atualização (Hz)":1},
-    "Trabalho / produtividade": {**DEFAULT_WEIGHTS,"Preço atual (R$)":7,"CPU":9,"RAM instalada (GB)":10,"Expansão de RAM":9,"Painel":8,"Proporção":7,"Webcam":6,"Bateria (Wh)":7},
-    "Desempenho": {**DEFAULT_WEIGHTS,"Preço atual (R$)":5,"CPU":10,"GPU":9,"RAM instalada (GB)":10,"Tipo RAM":7,"Dual-channel de fábrica":7,"SSD instalado (GB)":7},
-    "Tela e multimídia": {**DEFAULT_WEIGHTS,"Preço atual (R$)":5,"Painel":10,"Resolução":9,"Brilho (nits)":9,"Cobertura de cores":10,"Taxa de atualização (Hz)":8,"GPU":6},
-    "Expansão / longevidade": {**DEFAULT_WEIGHTS,"Preço atual (R$)":6,"Expansão de RAM":10,"RAM máxima oficial (GB)":10,"Slots M.2 livres":9,"Tipo/interface SSD":6,"Material / construção":7},
-}
-
-CPU_SCORE = {
-    "Intel Core Ultra 5 115U":8.2,"Intel Core 5 120U":8.4,"Intel Core i7-1355U":8.5,
-    "Intel Core i5-1335U":7.7,"Intel Core i5-1334U":7.5,"Intel Core i7-10510U":5.2
-}
-GPU_SCORE = {
-    "Intel Iris Xe Graphics":7.5,"Intel Graphics":7.2,
-    "Intel UHD Graphics":5.0,"Intel UHD Graphics (ficha comercial)":5.5
-}
-NUMERIC_FIELDS = {
-    "Preço atual (R$)","Núcleos","P-cores","E-cores","LP E-cores","Threads","Clock base / referência (GHz)",
-    "Turbo máx. (GHz)","Cache L3 (MB)","RAM instalada (GB)","Slots RAM físicos","Slots RAM livres",
-    "RAM máxima oficial (GB)","SSD instalado (GB)","Slots M.2 totais","Slots M.2 livres","Tela (pol.)",
-    "Taxa de atualização (Hz)","Brilho (nits)","Bateria (Wh)","Carregador (W)","Largura (mm)",
-    "Profundidade (mm)","Espessura (mm)","Peso (kg)"
-}
-LOWER_BETTER = {"Preço atual (R$)","Peso (kg)"}
-UNKNOWN_VALUES = {"","n/d","não informado","não confirmado","none","nan"}
-
-def resolved_gpu(row):
-    dedicated = str(row.get("GPU dedicada","N/D")).strip()
-    integrated = str(row.get("GPU integrada","N/D")).strip()
-    if dedicated.lower() not in UNKNOWN_VALUES and dedicated.lower() != "não" and "não determin" not in dedicated.lower():
-        return dedicated
-    return integrated
-
-def normalize_row(row):
-    item = {c:row.get(c,"N/D") for c in SPEC_COLUMNS}
-    if str(item.get("GPU","N/D")).strip().lower() in UNKNOWN_VALUES:
-        item["GPU"] = resolved_gpu(row)
-    return item
-
-def current_df():
-    return pd.DataFrame([normalize_row(row) for row in st.session_state.inventory],columns=SPEC_COLUMNS)
-
-def numeric_scores(series, lower_is_better=False):
-    x = pd.to_numeric(series, errors="coerce")
-    valid = x.dropna()
-    if len(valid) < 2 or valid.max() == valid.min():
-        return pd.Series([7.0 if pd.notna(v) else 5.0 for v in x], index=series.index)
-    z = (x-valid.min())/(valid.max()-valid.min())
-    if lower_is_better:
-        z = 1-z
-    return (4.0 + z*6.0).fillna(5.0)
-
-def generic_text_score(value):
-    s = str(value).strip().lower()
-    if s in UNKNOWN_VALUES:
-        return 5.0
-    if "não determin" in s or "varia " in s or "opcional" in s:
-        return 5.0
-    if s.startswith("sim") or "power delivery" in s or "displayport" in s:
-        return 8.5
-    if s == "não":
-        return 3.0
-    return 6.5
-
-def gpu_score(value):
-    s = str(value).strip()
-    sl = s.lower()
-    if s in GPU_SCORE:
-        return GPU_SCORE[s]
-    # Heurística para futuras GPUs dedicadas. A nota continua editável.
-    if any(x in sl for x in ["rtx 5090","rtx 5080","rtx 4090"]): return 10.0
-    if any(x in sl for x in ["rtx 5070","rtx 4080","rx 7900"]): return 9.5
-    if any(x in sl for x in ["rtx 5060","rtx 4070","rx 7800"]): return 9.0
-    if any(x in sl for x in ["rtx 5050","rtx 4060","rx 7700"]): return 8.5
-    if any(x in sl for x in ["rtx 4050","rtx 3060","rx 7600","arc a"]): return 8.0
-    if any(x in sl for x in ["gtx","radeon rx","geforce"]): return 7.5
-    return generic_text_score(value)
-
-def semantic_score(criterion, value):
-    s = str(value).lower()
-    if criterion == "CPU":
-        return CPU_SCORE.get(str(value),6.0)
-    if criterion == "GPU":
-        return gpu_score(value)
-    if criterion == "Tipo RAM":
-        if "lpddr5" in s or "ddr5" in s: return 9.0
-        if "lpddr4" in s: return 7.0
-        if "ddr4" in s: return 6.0
-    if criterion == "Dual-channel de fábrica":
-        return 9.0 if s.startswith("sim") else 3.0
-    if criterion == "Expansão de RAM":
-        if s.startswith("não"): return 2.0
-        if "64gb" in s: return 10.0
-        if "32gb" in s: return 9.5
-        if "sim" in s: return 8.0
-        if "limit" in s: return 5.0
-    if criterion == "Tipo/interface SSD":
-        if "gen4" in s or "4.0" in s: return 9.0
-        if "nvme" in s: return 7.5
-    if criterion == "Resolução":
-        if any(x in s for x in ["2560","2880","3200","3840"]): return 10.0
-        if "1920×1200" in s or "1920x1200" in s: return 9.0
-        if "1920×1080" in s or "1920x1080" in s: return 7.0
-    if criterion == "Proporção":
-        if "16:10" in s or "3:2" in s: return 9.0
-        if "16:9" in s: return 6.0
-    if criterion == "Painel":
-        if "oled" in s: return 10.0
-        if "mini" in s and "led" in s: return 9.5
-        if "ips" in s and "tn" not in s: return 9.0
-        if "wva" in s: return 7.5
-        if "tn" in s: return 4.5
-    if criterion == "Cobertura de cores":
-        if "100%" in s: return 10.0
-        if "62,5" in s or "62.5" in s: return 7.0
-        if "45%" in s: return 6.0
-    if criterion == "Webcam":
-        if "1080" in s or "fhd" in s: return 9.0
-        if "720" in s or "hd" in s: return 6.0
-    if criterion == "Wi‑Fi":
-        if "wi-fi 7" in s or "wifi 7" in s: return 10.0
-        if "6e" in s: return 9.5
-        if "wi‑fi 6" in s or "wi-fi 6" in s or "wifi 6" in s: return 8.5
-        if "wi‑fi 5" in s or "wi-fi 5" in s or "wifi 5" in s: return 6.0
-    if criterion == "Thunderbolt / USB4":
-        if "thunderbolt 5" in s: return 10.0
-        if "thunderbolt 4" in s or "usb4" in s: return 9.5
-        if s == "não": return 3.0
-    if criterion in {"USB‑C com vídeo","USB‑C com carregamento"}:
-        return 9.0 if s.startswith("sim") or "displayport" in s or "power delivery" in s else 3.0
-    if criterion == "Material / construção":
-        if "metá" in s or "alum" in s: return 8.5
-        if "plástico" in s: return 6.0
-    return generic_text_score(value)
-
-def build_initial_scores(frame):
-    models = frame[MODEL_COL].astype(str).tolist()
-    out = pd.DataFrame(index=models,columns=IMPORTANT_CRITERIA,dtype=float)
-    for c in IMPORTANT_CRITERIA:
-        if c in NUMERIC_FIELDS:
-            out[c] = numeric_scores(frame[c],c in LOWER_BETTER).values
-        else:
-            out[c] = frame[c].map(lambda v:semantic_score(c,v)).values
-    return out.clip(0,10).round(1)
-
-def reconcile_scores(reset_model=None):
-    frame = current_df()
-    fresh = build_initial_scores(frame)
-    old = st.session_state.get("scores")
-    if old is not None:
-        for model in fresh.index:
-            if model == reset_model or model not in old.index:
-                continue
-            for c in IMPORTANT_CRITERIA:
-                if c in old.columns:
-                    fresh.loc[model,c] = old.loc[model,c]
-    st.session_state.scores = fresh
-
-def parse_value(col,value):
-    value = value.strip()
-    if value == "":
-        return "N/D"
-    if col in NUMERIC_FIELDS:
-        cleaned = value.replace("R$","").replace(".","").replace(",",".").strip() if col=="Preço atual (R$)" else value.replace(",",".")
-        try:
-            number = float(cleaned)
-            return int(number) if number.is_integer() else number
-        except ValueError:
-            return value
-    return value
-
-def data_coverage(row):
-    relevant = [c for c in IMPORTANT_CRITERIA if c != "Preço atual (R$)"]
-    known = 0
-    for c in relevant:
-        val = str(row.get(c,"N/D")).strip().lower()
-        if val not in UNKNOWN_VALUES and "não determin" not in val:
-            known += 1
-    return round(100*known/len(relevant))
-
-if "inventory" not in st.session_state:
-    st.session_state.inventory = [normalize_row(dict(x)) for x in NOTEBOOKS]
-if "weights" not in st.session_state:
-    st.session_state.weights = DEFAULT_WEIGHTS.copy()
-if "scores" not in st.session_state:
-    st.session_state.scores = build_initial_scores(current_df())
-if "requirements" not in st.session_state:
-    st.session_state.requirements = {"max_price":0.0,"min_ram":0,"min_ssd":0,"max_weight":0.0,"usb_c_charge":False}
-if "custom_presets" not in st.session_state:
-    st.session_state.custom_presets = {}
-
-def models():
-    return current_df()[MODEL_COL].astype(str).tolist()
-
-def requirement_status(row):
-    req = st.session_state.requirements
-    fails = []
-    def num(col):
-        return pd.to_numeric(pd.Series([row.get(col)]),errors="coerce").iloc[0]
-    price,ram,ssd,weight = num("Preço atual (R$)"),num("RAM instalada (GB)"),num("SSD instalado (GB)"),num("Peso (kg)")
-    if req["max_price"] > 0 and pd.notna(price) and price > req["max_price"]: fails.append("preço")
-    if req["max_price"] > 0 and pd.isna(price): fails.append("preço não informado")
-    if req["min_ram"] > 0 and (pd.isna(ram) or ram < req["min_ram"]): fails.append("RAM")
-    if req["min_ssd"] > 0 and (pd.isna(ssd) or ssd < req["min_ssd"]): fails.append("SSD")
-    if req["max_weight"] > 0 and (pd.isna(weight) or weight > req["max_weight"]): fails.append("peso")
-    if req["usb_c_charge"] and not str(row.get("USB‑C com carregamento","")).lower().startswith("sim"): fails.append("USB‑C com carga")
-    return ("Atende" if not fails else "Não atende",", ".join(fails))
-
-def ranking(selected_models=None):
-    frame = current_df()
-    available = frame[MODEL_COL].astype(str).tolist()
-    score_df = st.session_state.scores.reindex(available)
-    weights = pd.Series(st.session_state.weights,dtype=float)
-    active = weights[weights > 0]
-    if active.empty:
-        total = pd.Series(0.0,index=available)
-    else:
-        total = score_df[active.index].mul(active,axis=1).sum(axis=1)/active.sum()
-    rows=[]
-    indexed=frame.set_index(MODEL_COL)
-    for model in available:
-        status,reason=requirement_status(indexed.loc[model])
-        rows.append({
-            "Notebook":model,
-            "Pontuação":float(total.loc[model]),
-            "Nota / 100":round(float(total.loc[model])*10,1),
-            "Requisitos":status,
-            "Pendências":reason,
-            "Cobertura dos dados":f"{data_coverage(indexed.loc[model])}%"
-        })
-    result=pd.DataFrame(rows)
-    if selected_models is not None:
-        result=result[result["Notebook"].isin(selected_models)]
-    result["_ok"]=result["Requisitos"].eq("Atende").astype(int)
-    return result.sort_values(["_ok","Pontuação"],ascending=[False,False]).drop(columns="_ok").reset_index(drop=True)
-
-def notebook_summary(row):
-    known = {
-        "Galaxy Book4 15,6” — i5-1335U / 8GB / 512GB": SUMMARY["Samsung Galaxy Book4"],
-        "Aspire 16 A16-71M-55H0 — Ultra 5 115U / 16GB / 512GB": SUMMARY["Acer Aspire 16"],
-        "ThinkPad E14 (Gen 1) — i7-10510U / 8GB / 512GB": SUMMARY["Lenovo ThinkPad E14"],
-        "Vivobook 16 X1605VA-MB763W — i7-1355U / 16GB / 512GB": SUMMARY["ASUS Vivobook 16"],
-        "200 G2i 16” — Core 5 120U / 8GB / 512GB": SUMMARY["HP 200 G2i"],
-        "Dell 15 DC15-I51334U-A50 — i5-1334U / 8GB / 512GB": SUMMARY["Dell A50"],
-        "Dell 15 DC15-I51334U-M80 — i5-1334U / 16GB / 1TB": SUMMARY["Dell M80"],
+# ---------------------------------------------------------------------------
+# Estado (sessão + arquivo)
+# ---------------------------------------------------------------------------
+def default_state() -> dict:
+    return {
+        "inventory": [dict(r) for r in NOTEBOOKS],
+        "weights": dict(sc.DEFAULT_WEIGHTS),
+        "custom_presets": {},
+        "requirements": dict(sc.DEFAULT_REQUIREMENTS),
+        "overrides": {},
+        "missing_score": sc.DEFAULT_MISSING_SCORE,
     }
-    name=str(row.get(MODEL_COL,""))
-    if name in known: return known[name]
-    hi=str(row.get("Destaques objetivos","")).strip()
-    lo=str(row.get("Limitações / ressalvas","")).strip()
-    if hi not in {"","N/D"} and lo not in {"","N/D"}: return f"{hi}. Atenção: {lo}"
-    return hi if hi not in {"","N/D"} else "Sem resumo cadastrado."
 
-# ---------------------------------------------------------------------
-# Navegação
-# ---------------------------------------------------------------------
-PAGES = {
-    "inicio":"Início",
-    "comparativo":"Comparativo lado a lado",
-    "pesos":"Pesos",
-    "notas":"Notas",
-    "ranking":"Ranking",
-    "itens":"Itens cadastrados",
-    "resumo":"Resumo",
-}
-PAGE_ICONS = {
-    "inicio":"🏠","comparativo":"↔️","pesos":"⚖️","notas":"🎚️",
-    "ranking":"🏆","itens":"🗂️","resumo":"📝"
-}
 
-query_page = st.query_params.get("page","inicio")
-if isinstance(query_page,list): query_page=query_page[0]
-if query_page not in PAGES: query_page="inicio"
+def clean_requirements(raw: dict | None) -> dict:
+    req = dict(sc.DEFAULT_REQUIREMENTS)
+    for key, default in sc.DEFAULT_REQUIREMENTS.items():
+        if key in (raw or {}):
+            try:
+                req[key] = bool(raw[key]) if isinstance(default, bool) else type(default)(raw[key])
+            except (TypeError, ValueError):
+                pass
+    return req
 
-st.markdown("""
+
+def apply_state(state: dict) -> None:
+    base = default_state()
+    inventory = state.get("inventory")
+    inventory = base["inventory"] if inventory is None else inventory
+    ss = st.session_state
+    ss.inventory = [sc.normalize_item(r, SPEC_COLUMNS) for r in inventory]
+    names = {str(r[MODEL_COL]) for r in ss.inventory}
+    ss.weights = sc.clean_weights(state.get("weights"))
+    ss.custom_presets = {str(k): sc.clean_weights(v) for k, v in (state.get("custom_presets") or {}).items() if isinstance(v, dict)}
+    ss.requirements = clean_requirements(state.get("requirements"))
+    ss.overrides = {
+        str(name): {k: float(v) for k, v in values.items() if k in sc.CRITERIA_BY_KEY and isinstance(v, (int, float))}
+        for name, values in (state.get("overrides") or {}).items() if isinstance(values, dict) and str(name) in names
+    }
+    try:
+        ss.missing_score = float(min(10.0, max(0.0, float(state.get("missing_score", sc.DEFAULT_MISSING_SCORE)))))
+    except (TypeError, ValueError):
+        ss.missing_score = sc.DEFAULT_MISSING_SCORE
+    for key in list(ss.keys()):
+        if isinstance(key, str) and key.startswith(WIDGET_PREFIXES):
+            del ss[key]
+    ss.epoch = ss.get("epoch", 0) + 1
+
+
+def current_state() -> dict:
+    return {k: st.session_state[k] for k in storage.STATE_KEYS}
+
+
+def state_fingerprint() -> str:
+    return json.dumps(storage.to_backup(current_state()), sort_keys=True, ensure_ascii=False, default=str)
+
+
+def init_state() -> None:
+    ss = st.session_state
+    if "inventory" not in ss:
+        stored, mtime = storage.load()
+        apply_state(stored or default_state())
+        ss.loaded_mtime, ss.saved = mtime, state_fingerprint() if stored else ""
+        ss.excluded = set()
+        return
+    # Outra sessão gravou depois de nós? Recarrega, a menos que haja mudança local ainda não salva.
+    disk = storage.mtime()
+    if disk and disk > ss.loaded_mtime + 1e-6 and state_fingerprint() == ss.saved:
+        stored, mtime = storage.load()
+        if stored:
+            apply_state(stored)
+            ss.loaded_mtime, ss.saved = mtime, state_fingerprint()
+
+
+def autosave() -> None:
+    ss = st.session_state
+    if "inventory" not in ss:
+        return
+    fingerprint = state_fingerprint()
+    if fingerprint == ss.get("saved"):
+        return
+    try:
+        ss.loaded_mtime = storage.save(current_state())
+        ss.saved, ss.save_error = fingerprint, None
+    except OSError as exc:
+        ss.save_error = str(exc)
+
+
+def toast(message: str, icon: str = "✅") -> None:
+    st.session_state.setdefault("toasts", []).append((icon, message))
+
+
+def all_presets() -> dict[str, dict]:
+    return {**sc.PRESETS, **st.session_state.custom_presets}
+
+
+def matching_preset(weights: dict) -> str | None:
+    for name, preset in all_presets().items():
+        if all(abs(preset.get(k, 0) - weights.get(k, 0)) < 1e-6 for k in sc.CRITERION_KEYS):
+            return name
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Callbacks
+# ---------------------------------------------------------------------------
+def cb_preset() -> None:
+    name = st.session_state.get("preset_widget")
+    presets = all_presets()
+    if name in presets:
+        st.session_state.weights = dict(presets[name])
+        toast(f"Perfil “{name}” aplicado.", "⚖️")
+
+
+def cb_items() -> None:
+    chosen = set(st.session_state.get("sel_items", []))
+    st.session_state.excluded = {str(r[MODEL_COL]) for r in st.session_state.inventory} - chosen
+
+
+def cb_requirement(key: str) -> None:
+    st.session_state.requirements[key] = st.session_state[f"req_{key}"]
+
+
+def cb_clear_requirements() -> None:
+    st.session_state.requirements = dict(sc.DEFAULT_REQUIREMENTS)
+
+
+def cb_weight(key: str) -> None:
+    st.session_state.weights[key] = float(st.session_state[f"w_{key}"])
+
+
+def cb_missing() -> None:
+    st.session_state.missing_score = float(st.session_state["w__missing"])
+
+
+# ---------------------------------------------------------------------------
+# Formatação e componentes
+# ---------------------------------------------------------------------------
+def fmt_value(value) -> str:
+    if isinstance(value, bool):
+        return "Sim" if value else "Não"
+    if isinstance(value, float):
+        return sc.fmt_num(value, 0) if value.is_integer() else str(value).replace(".", ",")
+    if isinstance(value, int):
+        return sc.fmt_num(value, 0) if abs(value) >= 1000 else str(value)
+    return str(value)
+
+
+def form_value(value) -> str:
+    """Valor para o formulário, sem separador de milhar (para não ser relido como decimal)."""
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else str(value).replace(".", ",")
+    return str(value)
+
+
+def fmt_score(value: float, decimals: int = 1) -> str:
+    return sc.fmt_num(float(value), decimals)
+
+
+def safe_url(value) -> str | None:
+    text = str(value or "").strip()
+    return text if text.lower().startswith(("http://", "https://")) else None
+
+
+def blend(hex_a: str, hex_b: str, t: float) -> str:
+    a = [int(hex_a[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(hex_b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(a, b))
+
+
+def score_tint(score: float) -> str:
+    """Divergente: vermelho (nota baixa) ← branco (5) → azul (nota alta)."""
+    t = max(-1.0, min(1.0, (float(score) - 5) / 5))
+    return blend("#ffffff", "#b7d3f6", t) if t >= 0 else blend("#ffffff", "#f6c5c4", -t)
+
+
+def header(title: str, lead: str = "") -> None:
+    st.html(f'<div class="nd-header"><h1 class="nd-title">{esc(title)}</h1>'
+            + (f'<p class="nd-lead">{lead}</p>' if lead else "") + "</div>")
+
+
+def stat_cards(cards: list[tuple[str, str, str]]) -> None:
+    items = "".join(
+        f'<div class="nd-stat"><div class="lbl">{esc(lbl)}</div><div class="val">{esc(val)}</div>'
+        f'<div class="sub">{esc(sub)}</div></div>' for lbl, val, sub in cards)
+    st.html(f'<div class="nd-grid">{items}</div>')
+
+
+def callout(text: str, kind: str = "info") -> None:
+    st.html(f'<div class="nd-callout {kind}">{text}</div>')
+
+
+def chip(text: str, kind: str = "") -> str:
+    return f'<span class="nd-chip {kind}">{esc(text)}</span>'
+
+
+def status_chip(ok: bool, pending: str = "") -> str:
+    return chip("✓ Atende aos requisitos", "good") if ok else chip(f"✕ Não atende: {pending}", "bad")
+
+
+def config_of(name: str) -> str:
+    parts = name.split(" — ", 1)
+    return parts[1] if len(parts) == 2 else ""
+
+
+def plot(fig: go.Figure, key: str | None = None) -> None:
+    fig.update_layout(font=dict(family="Inter, system-ui, sans-serif", color=INK, size=13), separators=",.",
+                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      hoverlabel=dict(bgcolor="white", font_size=13, bordercolor=GRID))
+    st.plotly_chart(fig, width="stretch", theme=None, key=key, config={"displayModeBar": False})
+
+
+def inject_css() -> None:
+    st.html("""
 <style>
-/* Base */
-.block-container {max-width: 1440px; padding-top: 1.3rem; padding-bottom: 3rem;}
-[data-testid="stHeaderActionElements"] {display:none !important;}
-h1 a, h2 a, h3 a, h4 a {display:none !important;}
-h1 {font-size:2.05rem !important; margin-bottom:.15rem !important;}
-h2 {font-size:1.45rem !important; margin-top:.7rem !important;}
-h3 {font-size:1.05rem !important;}
-p, label, div {letter-spacing:-0.005em;}
-
-/* Sidebar */
-[data-testid="stSidebar"] {border-right:1px solid rgba(128,128,128,.14);}
-[data-testid="stSidebar"] .stButton > button {
-  justify-content:flex-start;
-  text-align:left;
-  margin-bottom:.18rem;
-}
-.edit-hint {
-  border:1px solid rgba(49,87,213,.22);
-  background:rgba(49,87,213,.055);
-  border-radius:12px;
-  padding:10px 13px;
-  margin:.5rem 0 .9rem 0;
-  color:#46536a;
-  font-size:.9rem;
-}
-
-/* Containers / cards */
-[data-testid="stVerticalBlockBorderWrapper"] {
-  border-radius:16px !important;
-  border-color:rgba(120,130,150,.22) !important;
-  box-shadow:0 1px 2px rgba(15,23,42,.025);
-}
-.feature-card {
-  min-height:88px;
-}
-.muted {color:#697386; font-size:.93rem; line-height:1.45;}
-.eyebrow {font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; font-weight:700; color:#667085;}
-.section-lead {font-size:1.02rem; color:#667085; max-width:860px; margin-bottom:1rem;}
-
-/* Metrics */
-[data-testid="stMetric"] {
-  background:rgba(128,128,128,.045);
-  border:1px solid rgba(120,130,150,.16);
-  padding:14px 16px;
-  border-radius:14px;
-}
-[data-testid="stMetricLabel"] {font-weight:600; color:#667085;}
-
-/* Buttons */
-.stButton > button, .stDownloadButton > button {
-  border-radius:10px;
-  min-height:2.55rem;
-  font-weight:600;
-}
-.stButton > button[kind="primary"] {box-shadow:0 2px 8px rgba(49,87,213,.18);}
-
-/* Dataframes */
-[data-testid="stDataFrame"] {
-  border:1px solid rgba(120,130,150,.18);
-  border-radius:12px;
-  overflow:hidden;
-}
-
-/* Tabs */
-button[data-baseweb="tab"] {font-weight:600;}
+:root{--nd-ink:#172033;--nd-ink-2:#4b5565;--nd-muted:#6b7385;--nd-line:#e3e7ef;--nd-soft:#f5f7fb;
+--nd-primary:#3157d5;--nd-primary-soft:#eef2fd;--nd-good:#0b6b0b;--nd-good-bg:#e8f6e8;--nd-bad:#a82424;--nd-bad-bg:#fcecec;
+--nd-warn:#7a5200;--nd-warn-bg:#fff5dc}
+.block-container{max-width:1320px;padding-top:4.6rem;padding-bottom:4rem}
+[data-testid="stHeaderActionElements"],h1 a,h2 a,h3 a{display:none!important}
+h2,h3{letter-spacing:-.015em}
+.nd-header{margin:.1rem 0 1.1rem}
+.nd-eyebrow{font-size:.74rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--nd-primary)}
+.nd-title{font-size:2rem!important;font-weight:800!important;letter-spacing:-.025em;color:var(--nd-ink);margin:.1rem 0 .3rem!important;padding:0!important;line-height:1.15!important}
+.nd-lead{color:var(--nd-ink-2);font-size:1.02rem;max-width:860px;line-height:1.55;margin:0}
+.nd-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.nd-stat{border:1px solid var(--nd-line);border-radius:14px;padding:14px 16px;background:#fff}
+.nd-stat .lbl{font-size:.74rem;color:var(--nd-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.nd-stat .val{font-size:1.4rem;font-weight:750;color:var(--nd-ink);margin-top:4px;line-height:1.2}
+.nd-stat .sub{font-size:.84rem;color:var(--nd-muted);margin-top:3px}
+.nd-callout{border-radius:12px;padding:11px 14px;font-size:.93rem;line-height:1.5;border:1px solid var(--nd-line);background:var(--nd-soft);color:var(--nd-ink-2);margin:.2rem 0 .6rem}
+.nd-callout.info{background:var(--nd-primary-soft);border-color:#d6defa}
+.nd-callout.warn{background:var(--nd-warn-bg);border-color:#f3e0ad;color:var(--nd-warn)}
+.nd-callout.good{background:var(--nd-good-bg);border-color:#cfe9cf;color:var(--nd-good)}
+.nd-callout b{color:inherit}
+.nd-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:600;background:var(--nd-soft);color:var(--nd-ink-2);border:1px solid var(--nd-line);margin:0 5px 5px 0;line-height:1.6}
+.nd-chip.good{background:var(--nd-good-bg);color:var(--nd-good);border-color:#cfe9cf}
+.nd-chip.bad{background:var(--nd-bad-bg);color:var(--nd-bad);border-color:#f3cccc}
+.nd-chip.blue{background:var(--nd-primary-soft);color:var(--nd-primary);border-color:#d6defa}
+.nd-step{display:flex;gap:10px;align-items:flex-start}
+.nd-step .num{flex:0 0 28px;height:28px;border-radius:50%;background:var(--nd-primary);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.9rem}
+.nd-step .t{font-weight:700;color:var(--nd-ink);font-size:1rem;line-height:1.3}
+.nd-step .d{color:var(--nd-ink-2);font-size:.88rem;line-height:1.45;margin-top:3px}
+/* Tabela comparativa */
+.nd-table-wrap{overflow:auto;max-height:74vh;border:1px solid var(--nd-line);border-radius:14px;background:#fff}
+table.nd-spec{border-collapse:separate;border-spacing:0;width:100%;font-size:.87rem;color:var(--nd-ink)}
+table.nd-spec th,table.nd-spec td{padding:8px 12px;border-bottom:1px solid var(--nd-line);vertical-align:top;text-align:left;line-height:1.4}
+table.nd-spec thead th{position:sticky;top:0;background:#fff;z-index:2;min-width:185px;border-bottom:2px solid var(--nd-line)}
+table.nd-spec thead th.corner{left:0;z-index:3;min-width:200px;color:var(--nd-muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.06em}
+table.nd-spec th.rowh{position:sticky;left:0;background:#fafbfd;z-index:1;font-weight:600;color:var(--nd-ink-2);min-width:200px;max-width:240px;border-right:1px solid var(--nd-line)}
+table.nd-spec tr.grp td{background:var(--nd-soft);font-weight:700;text-transform:uppercase;font-size:.72rem;letter-spacing:.08em;color:var(--nd-primary);padding:6px 12px}
+table.nd-spec tr.grp td span{position:sticky;left:12px}
+.nd-h-name{font-weight:750;font-size:.93rem;line-height:1.25}
+.nd-h-sub{font-weight:500;color:var(--nd-muted);font-size:.78rem;margin-top:2px}
+.nd-h-score{margin-top:6px}
+.nd-badge{display:inline-block;margin-left:6px;font-size:.72rem;font-weight:700;padding:0 6px;border-radius:6px;background:rgba(255,255,255,.75);color:var(--nd-ink);border:1px solid rgba(23,32,51,.12);white-space:nowrap}
+.nd-crit{display:block;font-size:.7rem;font-weight:600;color:var(--nd-primary);margin-top:1px}
+table.nd-spec a{color:var(--nd-primary);font-weight:600;text-decoration:none}
+/* Cartões de resumo e pódio */
+.nd-cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(400px,1fr))}
+.nd-card{border:1px solid var(--nd-line);border-radius:16px;padding:18px 18px 14px;background:#fff;display:flex;flex-direction:column;gap:10px}
+.nd-card.out{background:#fcfcfd;border-style:dashed}
+.nd-card-head{display:flex;gap:12px;align-items:flex-start}
+.nd-rank{flex:0 0 40px;height:40px;border-radius:12px;background:var(--nd-primary-soft);color:var(--nd-primary);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:1rem}
+.nd-card-title{font-weight:750;font-size:1.06rem;line-height:1.25;color:var(--nd-ink)}
+.nd-card-sub{color:var(--nd-muted);font-size:.84rem;margin-top:2px}
+.nd-score{margin-left:auto;text-align:right;font-weight:800;font-size:1.5rem;color:var(--nd-ink);line-height:1}
+.nd-score small{display:block;font-size:.7rem;font-weight:600;color:var(--nd-muted);margin-top:4px;text-transform:uppercase;letter-spacing:.05em}
+.nd-card p{margin:0;color:var(--nd-ink-2);font-size:.92rem;line-height:1.5}
+.nd-specs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.nd-specs div{background:var(--nd-soft);border-radius:10px;padding:7px 9px;min-width:0}
+.nd-specs .k{font-size:.68rem;font-weight:700;color:var(--nd-muted);text-transform:uppercase;letter-spacing:.05em}
+.nd-specs .v{font-size:.86rem;font-weight:600;color:var(--nd-ink);overflow-wrap:anywhere;line-height:1.3}
+.nd-pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.86rem}
+.nd-pc ul{margin:.2rem 0 0;padding-left:1.1rem;color:var(--nd-ink-2)}
+.nd-pc .h{font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em}
+.nd-pc .pro .h{color:var(--nd-good)}.nd-pc .con .h{color:var(--nd-bad)}
+.nd-links{font-size:.85rem;border-top:1px solid var(--nd-line);padding-top:9px}
+.nd-links a{color:var(--nd-primary);font-weight:600;text-decoration:none;margin-right:14px}
+.nd-podium{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-bottom:.6rem}
+.nd-pod{border:1px solid var(--nd-line);border-radius:16px;padding:16px;background:#fff}
+.nd-pod.first{border:2px solid var(--nd-primary);background:linear-gradient(180deg,#f3f6ff 0%,#fff 70%)}
+.nd-pod .pos{font-size:.74rem;font-weight:800;color:var(--nd-primary);text-transform:uppercase;letter-spacing:.08em}
+.nd-pod .name{font-weight:750;font-size:1.08rem;margin:.25rem 0 .1rem;color:var(--nd-ink);line-height:1.25}
+.nd-pod .cfg{color:var(--nd-muted);font-size:.83rem}
+.nd-pod .sc{font-size:2.1rem;font-weight:800;color:var(--nd-ink);margin:.45rem 0 .1rem;line-height:1}
+.nd-pod .sc span{font-size:.95rem;color:var(--nd-muted);font-weight:600}
+.nd-pod .meta{font-size:.84rem;color:var(--nd-ink-2);margin-bottom:.4rem}
+.nd-brand{display:flex;align-items:center;gap:10px;margin:.2rem 0 .4rem}
+.nd-brand .logo{width:38px;height:38px;border-radius:11px;background:var(--nd-primary);display:flex;align-items:center;justify-content:center;font-size:1.25rem}
+.nd-brand .n{font-weight:800;font-size:1.15rem;color:var(--nd-ink);line-height:1.1}
+.nd-brand .s{font-size:.78rem;color:var(--nd-muted)}
+.nd-share-t{font-size:.8rem;font-weight:700;color:var(--nd-ink-2);margin-bottom:6px}
+.nd-share{display:flex;height:34px;border-radius:10px;overflow:hidden;gap:2px;background:#fff}
+.nd-share div{display:flex;align-items:center;justify-content:center;color:#fff;font-size:.78rem;font-weight:700;min-width:0}
+.nd-legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 4px;font-size:.8rem;color:var(--nd-ink-2)}
+.nd-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.nd-side-h{font-size:.72rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--nd-muted);margin:.6rem 0 .1rem}
+[data-testid="stSidebar"] [data-testid="stExpander"] details{background:#fff}
+@media (max-width:640px){.nd-cards{grid-template-columns:1fr}.nd-specs{grid-template-columns:repeat(2,minmax(0,1fr))}.nd-title{font-size:1.6rem!important}}
 </style>
-""",unsafe_allow_html=True)
+""")
 
-st.title("Note da Lu")
-st.caption("Compare notebooks com critérios explícitos, requisitos mínimos e um ranking que você controla.")
 
-all_models=models()
+# ---------------------------------------------------------------------------
+# Contexto da execução
+# ---------------------------------------------------------------------------
+def build_context() -> SimpleNamespace:
+    ss = st.session_state
+    inventory = ss.inventory
+    all_names = [str(r[MODEL_COL]) for r in inventory]
+    ss.excluded = {n for n in ss.get("excluded", set()) if n in all_names}
+    rows = [r for r in inventory if str(r[MODEL_COL]) not in ss.excluded]
+    ev = sc.evaluate(rows, ss.weights, ss.overrides, ss.missing_score)
+    rank = sc.ranking_table(rows, ev, ss.requirements)
+    return SimpleNamespace(
+        inventory=inventory, all_names=all_names, rows=rows, by_name={str(r[MODEL_COL]): r for r in inventory},
+        short=sc.short_names(inventory), ev=ev, rank=rank,
+        order=rank["Notebook"].tolist() if not rank.empty else [],
+    )
 
-with st.sidebar:
-    page=query_page
-    st.markdown('<div class="eyebrow">Navegação</div>',unsafe_allow_html=True)
-    for nav_page in PAGES:
-        is_active = nav_page == page
-        if st.button(
-            f"{PAGE_ICONS[nav_page]}  {PAGES[nav_page]}",
-            key=f"nav_{nav_page}",
-            use_container_width=True,
-            type="primary" if is_active else "secondary"
-        ):
-            st.query_params["page"]=nav_page
-            st.rerun()
-    st.divider()
-    st.subheader("Perfil de compra")
-    available_presets={**PRESETS, **st.session_state.custom_presets}
-    preset=st.selectbox("Preset de pesos",list(available_presets))
-    if st.button("Aplicar preset",use_container_width=True):
-        st.session_state.weights=available_presets[preset].copy()
-        st.rerun()
-    st.divider()
-    selected=st.multiselect("Itens considerados",all_models,default=all_models)
-    with st.expander("Requisitos mínimos"):
-        st.caption("Requisitos eliminatórios vêm antes da pontuação.")
-        req=st.session_state.requirements
-        req["max_price"]=st.number_input("Preço máximo (R$)",min_value=0.0,value=float(req["max_price"]),step=100.0)
-        req["min_ram"]=st.number_input("RAM mínima (GB)",min_value=0,value=int(req["min_ram"]),step=4)
-        req["min_ssd"]=st.number_input("SSD mínimo (GB)",min_value=0,value=int(req["min_ssd"]),step=128)
-        req["max_weight"]=st.number_input("Peso máximo (kg)",min_value=0.0,value=float(req["max_weight"]),step=0.1)
-        req["usb_c_charge"]=st.checkbox("Exigir USB‑C com carregamento",value=bool(req["usb_c_charge"]))
-        st.session_state.requirements=req
-    st.caption(f"{len(st.session_state.inventory)} notebook(s) cadastrado(s).")
 
-# ---------------------------------------------------------------------
+def leader_info(ctx) -> dict | None:
+    eligible = ctx.rank[ctx.rank["Atende"]] if not ctx.rank.empty else ctx.rank
+    if eligible.empty:
+        return None
+    first = eligible.iloc[0]
+    margin = float(first["Nota"] - eligible.iloc[1]["Nota"]) if len(eligible) > 1 else None
+    return {"name": first["Notebook"], "score": float(first["Nota"]), "margin": margin, "eligible": len(eligible)}
+
+
+# ---------------------------------------------------------------------------
+# Barra lateral
+# ---------------------------------------------------------------------------
+REQ_FIELDS = [
+    ("max_price", "Preço máximo (R$)", dict(min_value=0.0, step=100.0, format="%.0f"), "Itens sem preço cadastrado não atendem."),
+    ("min_ram", "RAM mínima (GB)", dict(min_value=0, step=4), None),
+    ("min_ram_ceiling", "Teto de RAM mínimo (GB)", dict(min_value=0, step=4), "RAM alcançável com upgrade oficial."),
+    ("min_ssd", "SSD mínimo (GB)", dict(min_value=0, step=128), None),
+    ("max_weight", "Peso máximo (kg)", dict(min_value=0.0, step=0.05, format="%.2f"), None),
+    ("min_screen", "Tela mínima (pol.)", dict(min_value=0.0, step=0.5, format="%.1f"), None),
+    ("max_screen", "Tela máxima (pol.)", dict(min_value=0.0, step=0.5, format="%.1f"), None),
+]
+
+
+def render_sidebar(ctx) -> None:
+    ss = st.session_state
+    with st.sidebar:
+        st.html('<div class="nd-brand"><div class="logo">💻</div><div><div class="n">Note da Lu</div>'
+                '<div class="s">Comparador racional de notebooks</div></div></div>')
+
+        st.html('<div class="nd-side-h">Perfil de pesos</div>')
+        presets = all_presets()
+        current = matching_preset(ss.weights)
+        options = list(presets) if current else [CUSTOM_LABEL] + list(presets)
+        ss.preset_widget = current or CUSTOM_LABEL
+        st.selectbox("Perfil de pesos", options, key="preset_widget", on_change=cb_preset, label_visibility="collapsed",
+                     help="Conjunto pronto de pesos. O ajuste fino fica na página Pesos.")
+
+        st.html('<div class="nd-side-h">Notebooks em análise</div>')
+        ss.sel_items = [n for n in ctx.all_names if n not in ss.excluded]
+        st.pills("Notebooks em análise", ctx.all_names, selection_mode="multi", key="sel_items", on_change=cb_items,
+                 format_func=lambda n: ctx.short.get(n, n), label_visibility="collapsed")
+        st.caption(f"{len(ctx.rows)} de {len(ctx.all_names)} cadastrados entram nas análises — clique para incluir ou tirar.")
+
+        req = ss.requirements
+        active = sum(1 for v in req.values() if v)
+        st.html('<div class="nd-side-h">Requisitos mínimos</div>')
+        with st.expander(f"{active} requisito(s) ativo(s)" if active else "Nenhum requisito ativo", icon=":material/rule:"):
+            st.caption("Eliminatórios: quem não atende continua visível, mas vai para o fim do ranking. Use 0 para não exigir.")
+            for key, label, kwargs, help_text in REQ_FIELDS:
+                ss[f"req_{key}"] = req[key]
+                st.number_input(label, key=f"req_{key}", on_change=cb_requirement, args=(key,), help=help_text, **kwargs)
+            for key, label in (("usb_c_charge", "Exigir carga pelo USB‑C"), ("rj45", "Exigir rede cabeada (RJ‑45)")):
+                ss[f"req_{key}"] = bool(req[key])
+                st.checkbox(label, key=f"req_{key}", on_change=cb_requirement, args=(key,))
+            if active:
+                st.button("Limpar requisitos", on_click=cb_clear_requirements, width="stretch", icon=":material/close:")
+
+        st.divider()
+        if storage.data_file() is None:
+            st.caption("💾 Alterações valem só nesta sessão. Faça backup em Equipamentos.")
+        elif ss.get("save_error"):
+            st.caption(f"⚠️ Não foi possível salvar: {ss.save_error}")
+        else:
+            st.caption("💾 Alterações salvas automaticamente.")
+
+
+# ---------------------------------------------------------------------------
 # Páginas
-# ---------------------------------------------------------------------
-if page=="inicio":
-    st.subheader("Escolha como quer começar")
-    st.markdown('<div class="section-lead">A ferramenta separa três coisas que costumam ser misturadas: <b>o que o notebook tem</b>, <b>o quanto isso importa para você</b> e <b>quanto aquela configuração merece de nota</b>.</div>',unsafe_allow_html=True)
-    cards=[
-        ("comparativo","↔️","Comparar lado a lado","Veja até 10 equipamentos juntos, filtre por grupo e esconda tudo que for igual."),
-        ("pesos","⚖️","Definir o que importa","Diga quais critérios têm peso real na sua compra. Preço pode entrar no cálculo de valor."),
-        ("notas","🎚️","Revisar as notas","Confira a spec que originou cada nota e ajuste qualquer avaliação com a qual não concorde."),
-        ("ranking","🏆","Ver o ranking","Veja pontuação ponderada, requisitos mínimos e cobertura dos dados de cada opção."),
-        ("itens","🗂️","Gerenciar equipamentos","Cadastre, edite ou remova modelos e preencha todas as especificações."),
-        ("resumo","📝","Ler o resumo","Faça uma leitura rápida dos principais pontos fortes, limitações e dados essenciais."),
+# ---------------------------------------------------------------------------
+def page_home(ctx) -> None:
+    header("Qual notebook comprar?",
+           "Compare as fichas técnicas, diga o que importa para você e deixe o ranking organizar a decisão — "
+           "com cada nota explicada e ajustável.")
+    leader = leader_info(ctx)
+    n = len(ctx.rows)
+    priced = sum(1 for r in ctx.rows if sc.number_field(r, PRICE_COL))
+    stat_cards([
+        ("Em análise", f"{n} de {len(ctx.all_names)}", "notebooks cadastrados"),
+        ("Preços cadastrados", f"{priced} de {n}", "necessários para custo-benefício"),
+        ("Atendem aos requisitos", f"{leader['eligible'] if leader else 0} de {n}", "requisitos na barra lateral"),
+        ("Líder atual", ctx.short.get(leader["name"], leader["name"]) if leader else "—",
+         (f"nota {fmt_score(leader['score'])}" + (f" · {fmt_score(leader['margin'])} pts à frente" if leader["margin"] is not None else ""))
+         if leader else "ninguém atende aos requisitos"),
+    ])
+    st.write("")
+    if n and priced < n:
+        callout("<b>Preços faltando.</b> Sem preço, o critério de custo recebe a nota padrão de dado ausente e o ranking "
+                "não reflete custo-benefício. Cadastre os valores em <b>Equipamentos → Preços</b>.", "warn")
+
+    st.subheader("Como decidir em 5 passos")
+    steps = [
+        ("compare", "1", "Compare as fichas", "Lado a lado, só o essencial ou a ficha completa, com cores indicando onde cada um vai bem."),
+        (None, "2", "Defina o inegociável", "Na barra lateral: preço máximo, RAM, peso, tamanho de tela, carga via USB‑C…"),
+        ("weights", "3", "Diga o que importa", "Escolha um perfil pronto ou ajuste o peso de cada critério de 0 a 10."),
+        ("scores", "4", "Confira as notas", "Veja a regra por trás de cada nota e corrija o que não fizer sentido para você."),
+        ("ranking", "5", "Decida", "Ranking explicado, teste de robustez entre perfis e análise de custo-benefício."),
     ]
-    cols=st.columns(2,gap="medium")
-    for i,(slug,icon,title,body) in enumerate(cards):
-        with cols[i%2]:
-            with st.container(border=True):
-                st.markdown(f"### {icon} {title}")
-                st.markdown(f'<div class="muted">{body}</div>',unsafe_allow_html=True)
-                if st.button("Abrir",key=f"home_{slug}",use_container_width=True):
-                    st.query_params["page"]=slug
-                    st.rerun()
-    a,b,c,d=st.columns(4)
-    a.metric("Equipamentos",len(all_models))
-    b.metric("Specs por item",len(SPEC_COLUMNS))
-    c.metric("Critérios pontuados",len(IMPORTANT_CRITERIA))
-    d.metric("Critérios eliminatórios",5)
-    st.info("Fluxo recomendado: **Comparativo → Requisitos mínimos → Pesos → Notas → Ranking**. Assim o ranking é consequência da decisão, não o ponto de partida.")
+    cols = st.columns(5, gap="small")
+    for col, (page, num, title, text) in zip(cols, steps):
+        with col.container(border=True, height="stretch"):
+            st.html(f'<div class="nd-step"><div class="num">{num}</div><div><div class="t">{esc(title)}</div>'
+                    f'<div class="d">{esc(text)}</div></div></div>')
+            if page:
+                st.page_link(PAGES[page], label="Abrir", icon=":material/arrow_forward:")
+            else:
+                st.caption("← barra lateral")
 
-elif page=="comparativo":
-    st.subheader("Comparativo lado a lado")
-    compare=st.multiselect("Escolha até 10 itens",all_models,default=all_models[:min(4,len(all_models))],max_selections=10,key="compare_models")
-    c1,c2=st.columns([2,1])
-    with c1:
-        group3=st.selectbox("Grupo de especificações",["Todos"]+list(GROUPS),key="spec_group")
-    with c2:
-        only_diff=st.toggle("Mostrar apenas diferenças",value=True)
-    if compare:
-        frame=current_df()
-        full=frame[frame[MODEL_COL].isin(compare)].set_index(MODEL_COL).T
-        if group3!="Todos":
-            wanted=[c for c in GROUPS[group3] if c!=MODEL_COL]
-            full=full.loc[[c for c in wanted if c in full.index]]
-        if only_diff and len(compare)>1:
-            normalized=full.astype(str).apply(lambda col:col.str.strip())
-            full=full[normalized.nunique(axis=1,dropna=False)>1]
-        st.dataframe(full,use_container_width=True,height=720)
-        st.download_button("Baixar comparação em CSV",full.to_csv().encode("utf-8-sig"),"comparativo_lado_a_lado.csv","text/csv")
-    else:
-        st.info("Escolha pelo menos um item.")
+    if ctx.rows:
+        st.subheader("Panorama rápido")
+        render_contrib_chart(ctx, height_per_item=44)
+        c1, c2 = st.columns(2)
+        c1.page_link(PAGES["summary"], label="Ler o resumo de cada notebook", icon=":material/description:")
+        c2.page_link(PAGES["items"], label="Cadastrar, editar ou atualizar preços", icon=":material/laptop:")
 
-elif page=="pesos":
-    st.subheader("Pesos dos critérios")
-    st.caption("0 ignora um critério; 10 dá importância máxima. Requisitos obrigatórios devem ser configurados na barra lateral, não como peso.")
-    group=st.selectbox("Grupo",["Todos"]+list(IMPORTANT_GROUPS),key="weight_group")
-    weight_cols=IMPORTANT_CRITERIA if group=="Todos" else IMPORTANT_GROUPS[group]
-    st.markdown('<div class="edit-hint">✏️ <b>Campo editável:</b> clique na célula da coluna <b>Peso ✏️</b> para alterar o valor de 0 a 10.</div>',unsafe_allow_html=True)
-    weight_df=pd.DataFrame({"Critério":weight_cols,"Peso ✏️":[st.session_state.weights[c] for c in weight_cols]})
-    edited=st.data_editor(weight_df,hide_index=True,use_container_width=True,
-        column_config={"Peso ✏️":st.column_config.NumberColumn("Peso ✏️",min_value=0,max_value=10,step=1,format="%d",help="Clique na célula para editar o peso.")},
-        disabled=["Critério"],key=f"weight_editor_{group}")
-    if st.button("Aplicar pesos",type="primary"):
-        for _,r in edited.iterrows(): st.session_state.weights[r["Critério"]]=float(r["Peso ✏️"])
+
+def spec_table_html(ctx, columns: list[str]) -> str:
+    names = ctx.order
+    ev, rank = ctx.ev, ctx.rank.set_index("Notebook")
+    head = ['<th class="corner">Especificação</th>']
+    for name in names:
+        r = rank.loc[name]
+        status = "" if r["Atende"] else ' <span class="nd-chip bad">não atende</span>'
+        head.append(f'<th><div class="nd-h-name">{esc(ctx.short[name])}</div><div class="nd-h-sub">{esc(config_of(name))}</div>'
+                    f'<div class="nd-h-score"><span class="nd-chip blue">{r["Posição"]}º · nota {fmt_score(r["Nota"])}</span>{status}</div></th>')
+    body = []
+    wanted = set(columns)
+    for group, cols in GROUPS.items():
+        group_cols = [c for c in cols if c in wanted]
+        if not group_cols:
+            continue
+        body.append(f'<tr class="grp"><td colspan="{len(names) + 1}"><span>{esc(group)}</span></td></tr>')
+        for col in group_cols:
+            key = PRIMARY_SOURCE.get(col)
+            label = esc(col) + (f'<span class="nd-crit">critério: {esc(sc.CRITERIA_BY_KEY[key].label)}</span>' if key else "")
+            cells = [f'<th class="rowh">{label}</th>']
+            for name in names:
+                value = ctx.by_name[name].get(col, "N/D")
+                if col in URL_FIELDS:
+                    url = safe_url(value)
+                    text = f'<a href="{esc(url)}" target="_blank" rel="noopener">abrir ↗</a>' if url else "—"
+                elif col == PRICE_COL:
+                    text = esc(sc.fmt_brl(sc.number_field(ctx.by_name[name], col))) if not sc.is_unknown(value) else "N/D"
+                else:
+                    text = esc(fmt_value(value))
+                style = ""
+                if key:
+                    score = ev.final.loc[name, key]
+                    mark = " ✎" if ev.manual.loc[name, key] else " ?" if pd.isna(ev.auto.loc[name, key]) else ""
+                    style = f' style="background:{MISSING_BG if mark == " ?" else score_tint(score)}"'
+                    text += f'<span class="nd-badge" title="Nota no critério {esc(sc.CRITERIA_BY_KEY[key].label)}">{fmt_score(score)}{mark}</span>'
+                cells.append(f"<td{style}>{text}</td>")
+            body.append("<tr>" + "".join(cells) + "</tr>")
+    return (f'<div class="nd-table-wrap"><table class="nd-spec"><thead><tr>{"".join(head)}</tr></thead>'
+            f'<tbody>{"".join(body)}</tbody></table></div>')
+
+
+def page_compare(ctx) -> None:
+    header("Fichas lado a lado",
+           "Colunas em ordem de ranking. Linhas ligadas a um critério ganham cor e nota: "
+           "<b style='color:#1c5cab'>azul</b> = bom, <b style='color:#b42727'>vermelho</b> = fraco.")
+    if not ctx.rows:
+        st.info("Escolha ao menos um notebook na barra lateral.")
+        return
+    tab_specs, tab_duel = st.tabs([":material/table_chart: Especificações", ":material/swords: Duelo entre dois"])
+    with tab_specs:
+        c1, c2, c3 = st.columns([1.1, 1.4, 1], vertical_alignment="bottom")
+        view = c1.segmented_control("Ficha", ["Essencial", "Completa"], default="Essencial", required=True, key="cmp_view")
+        group = c2.selectbox("Grupo", ["Todos os grupos"] + list(GROUPS), key="cmp_group")
+        only_diff = c3.toggle("Só o que muda", value=False, key="cmp_diff", help="Esconde linhas iguais em todos os itens.")
+        columns = [c for c in SPEC_COLUMNS if view == "Completa" or c in ESSENTIAL_COLUMNS]
+        if group != "Todos os grupos":
+            columns = [c for c in columns if c in GROUPS[group]]
+        columns = [c for c in columns if c != MODEL_COL]
+        if only_diff and len(ctx.rows) > 1:
+            columns = [c for c in columns if len({sc.norm(ctx.by_name[n].get(c)) for n in ctx.order}) > 1]
+        if not columns:
+            st.info("Nenhuma diferença neste grupo.")
+        else:
+            st.html(spec_table_html(ctx, columns))
+            st.caption("Nota no critério (0–10) ao lado do valor · ✎ nota ajustada manualmente · ? dado ausente (recebe a nota padrão definida em Pesos).")
+            table = pd.DataFrame({ctx.short[n]: [fmt_value(ctx.by_name[n].get(c, "N/D")) for c in columns] for n in ctx.order}, index=columns)
+            st.download_button("Baixar tabela (CSV)", table.to_csv().encode("utf-8-sig"), "comparativo.csv", "text/csv",
+                               icon=":material/download:")
+    with tab_duel:
+        render_duel(ctx)
+
+
+def render_duel(ctx) -> None:
+    if len(ctx.order) < 2:
+        st.info("Escolha ao menos dois notebooks na barra lateral.")
+        return
+    c1, c2 = st.columns(2)
+    a = c1.selectbox("Notebook A", ctx.order, index=0, format_func=lambda n: ctx.short[n], key="duel_a")
+    b = c2.selectbox("Notebook B", ctx.order, index=1, format_func=lambda n: ctx.short[n], key="duel_b")
+    if a == b:
+        st.info("Escolha dois notebooks diferentes.")
+        return
+    ev = ctx.ev
+    active = ev.active
+    total_w = ev.weights[active].sum() if active else 1
+    rows = []
+    for key in active:
+        sa, sb = ev.final.loc[a, key], ev.final.loc[b, key]
+        rows.append({"key": key, "Critério": sc.CRITERIA_BY_KEY[key].label, "pts": (sa - sb) * ev.weights[key] / total_w * 10,
+                     "A": sc.spec_text(ctx.by_name[a], key, compact=True), "nota A": sa,
+                     "B": sc.spec_text(ctx.by_name[b], key, compact=True), "nota B": sb})
+    df = pd.DataFrame(rows)
+    wins_a, wins_b = int((df["pts"] > 0.05).sum()), int((df["pts"] < -0.05).sum())
+    diff = float(ev.total[a] - ev.total[b])
+    winner, loser = (a, b) if diff >= 0 else (b, a)
+    stat_cards([
+        (f"A · {ctx.short[a]}", f"nota {fmt_score(ev.total[a])}", f"melhor em {wins_a} critério(s)"),
+        (f"B · {ctx.short[b]}", f"nota {fmt_score(ev.total[b])}", f"melhor em {wins_b} critério(s)"),
+        ("Diferença", f"{fmt_score(abs(diff))} pts", f"a favor de {ctx.short[winner]}" if abs(diff) >= 0.05 else "empate"),
+    ])
+    shown = df[df["pts"].abs() > 0.05].sort_values("pts")
+    if shown.empty:
+        st.info("Os dois têm as mesmas notas em todos os critérios ativos.")
+        return
+    colors = [COLOR_A if v > 0 else COLOR_B for v in shown["pts"]]
+    fig = go.Figure(go.Bar(
+        x=shown["pts"], y=shown["Critério"], orientation="h", marker=dict(color=colors, line=dict(color="white", width=2)),
+        customdata=shown[["A", "B", "nota A", "nota B"]].values,
+        hovertemplate="<b>%{y}</b><br>A: %{customdata[0]} → %{customdata[2]:.1f}<br>B: %{customdata[1]} → %{customdata[3]:.1f}"
+                      "<br>Diferença no total: %{x:+.1f} pts<extra></extra>"))
+    fig.update_layout(height=max(260, 30 * len(shown) + 90), margin=dict(l=10, r=20, t=40, b=30), showlegend=False,
+                      title=dict(text=f"<span style='color:{COLOR_A}'>■</span> vantagem de A · "
+                                      f"<span style='color:{COLOR_B}'>■</span> vantagem de B (pontos no total)", font_size=13, x=0),
+                      xaxis=dict(zeroline=True, zerolinecolor="#c3c2b7", gridcolor=GRID, ticksuffix=" pts"),
+                      yaxis=dict(automargin=True))
+    plot(fig, key="duel_chart")
+    table = df.assign(**{"Vantagem": df["pts"].map(lambda v: f"A +{fmt_score(v)}" if v > 0.05 else f"B +{fmt_score(-v)}" if v < -0.05 else "empate")})
+    st.dataframe(table[["Critério", "A", "nota A", "B", "nota B", "Vantagem"]], hide_index=True, width="stretch",
+                 column_config={"A": st.column_config.TextColumn(f"A · {ctx.short[a]}", width="large"),
+                                "B": st.column_config.TextColumn(f"B · {ctx.short[b]}", width="large"),
+                                "nota A": st.column_config.NumberColumn("Nota A", format="%.1f"),
+                                "nota B": st.column_config.NumberColumn("Nota B", format="%.1f")})
+
+
+def page_weights(ctx) -> None:
+    ss = st.session_state
+    header("O que importa na sua compra",
+           "0 ignora o critério; 10 é importância máxima. O que for <b>eliminatório</b> (ex.: preço máximo) "
+           "deve ir nos requisitos da barra lateral, não aqui. As mudanças valem na hora.")
+    weights = ss.weights
+    total = sum(weights.values())
+    shares = {g: sum(weights[k] for k in keys) / total * 100 if total else 0 for g, keys in sc.CRITERIA_GROUPS.items()}
+    segments = "".join(
+        f'<div title="{esc(g)}: {v:.0f}%" style="flex:{v:.3f} 0 0;background:{GROUP_COLORS[g]}">{f"{v:.0f}%" if v >= 6 else ""}</div>'
+        for g, v in shares.items() if v > 0)
+    legend = "".join(f'<span><i style="background:{GROUP_COLORS[g]}"></i>{esc(g)}</span>' for g in shares)
+    st.html(f'<div class="nd-share-t">Distribuição da importância por grupo</div><div class="nd-share">{segments}</div>'
+            f'<div class="nd-legend">{legend}</div>')
+
+    current = matching_preset(weights)
+    c1, c2, c3 = st.columns([1.4, 1, 1], vertical_alignment="bottom")
+    c1.markdown(f"Perfil atual: **{current or 'personalizado'}**")
+    if c2.button("Restaurar pesos padrão", icon=":material/restart_alt:", width="stretch", disabled=current == "Equilibrado"):
+        ss.weights = dict(sc.DEFAULT_WEIGHTS)
+        toast("Pesos padrão restaurados.", "⚖️")
+        st.rerun()
+    with c3.popover("Salvar como perfil", icon=":material/bookmark_add:", width="stretch"):
+        name = st.text_input("Nome do perfil", placeholder="Ex.: Trabalho remoto da Lu", key="new_preset_name").strip()
+        if st.button("Salvar", type="primary", disabled=not name):
+            if name in sc.PRESETS or name == CUSTOM_LABEL:
+                st.error("Esse nome é reservado.")
+            else:
+                ss.custom_presets[name] = dict(weights)
+                toast(f"Perfil “{name}” salvo.", "🔖")
+                st.rerun()
+        if ss.custom_presets:
+            st.divider()
+            victim = st.selectbox("Excluir perfil personalizado", list(ss.custom_presets), key="del_preset")
+            if st.button("Excluir", icon=":material/delete:"):
+                del ss.custom_presets[victim]
+                st.rerun()
+
+    st.write("")
+    columns = st.columns(3, gap="small")
+    load = [0, 0, 0]
+    for group, keys in sc.CRITERIA_GROUPS.items():
+        target = load.index(min(load))
+        load[target] += len(keys) + 1
+        with columns[target].container(border=True):
+            st.html(f'<div style="display:flex;align-items:center;gap:8px;font-weight:700;color:{INK}">'
+                    f'<span style="width:10px;height:10px;border-radius:3px;background:{GROUP_COLORS[group]}"></span>{esc(group)}'
+                    f'<span style="margin-left:auto;font-weight:600;color:{MUTED};font-size:.85rem">{shares[group]:.0f}% do total</span></div>')
+            for key in keys:
+                c = sc.CRITERIA_BY_KEY[key]
+                ss[f"w_{key}"] = int(round(weights[key]))
+                st.slider(c.label, 0, 10, key=f"w_{key}", on_change=cb_weight, args=(key,), help=c.rule)
+
+    with st.expander("Dados ausentes (N/D)", icon=":material/help:"):
+        ss["w__missing"] = float(ss.missing_score)
+        st.slider("Nota atribuída quando a ficha não informa o dado", 0.0, 10.0, step=0.5, key="w__missing", on_change=cb_missing,
+                  help="Padrão 4: levemente conservador — fabricantes costumam omitir números que não favorecem o produto.")
+        st.caption("A página Ranking mostra quanto do peso de cada notebook está apoiado em dados conhecidos.")
+
+
+def scores_heatmap(ctx) -> go.Figure:
+    ev, names = ctx.ev, ctx.order
+    keys = list(reversed(sc.CRITERION_KEYS))
+    known_z, missing_z, text, hover = [], [], [], []
+    for key in keys:
+        known_row, missing_row, text_row, hover_row = [], [], [], []
+        for n in names:
+            manual, missing = bool(ev.manual.loc[n, key]), bool(pd.isna(ev.auto.loc[n, key]))
+            value = float(ev.final.loc[n, key])
+            gray = missing and not manual
+            known_row.append(None if gray else value)
+            missing_row.append(value if gray else None)
+            text_row.append(fmt_score(value) + (" ✎" if manual else " ?" if gray else ""))
+            origin = "nota manual" if manual else "dado ausente → nota padrão" if gray else (ev.notes.loc[n, key] or "regra automática")
+            hover_row.append(f"{esc(sc.spec_text(ctx.by_name[n], key))}<br><i>{esc(origin)}</i>")
+        known_z.append(known_row)
+        missing_z.append(missing_row)
+        text.append(text_row)
+        hover.append(hover_row)
+    x = ["<br>".join(wrap_label(ctx.short[n], 13)) for n in names]
+    y = [("⚪ " if ev.weights[k] == 0 else "") + sc.CRITERIA_BY_KEY[k].label for k in keys]
+    common = dict(x=x, y=y, text=text, customdata=hover, texttemplate="%{text}", textfont=dict(size=12, color=INK),
+                  xgap=2, ygap=2, hovertemplate="<b>%{y}</b> · %{x}<br>%{customdata}<br>Nota: <b>%{z:.1f}</b><extra></extra>")
+    fig = go.Figure()
+    fig.add_heatmap(z=known_z, zmin=0, zmax=10, colorscale=[[0, "#ee8a89"], [0.5, "#f4f3f0"], [1, "#6da7ec"]],
+                    colorbar=dict(title=dict(text="nota", side="top"), thickness=10, len=0.45, tickvals=[0, 5, 10], y=0.75),
+                    **common)
+    fig.add_heatmap(z=missing_z, zmin=0, zmax=10, colorscale=[[0, MISSING_BG], [1, MISSING_BG]], showscale=False, **common)
+    fig.update_layout(height=27 * len(keys) + 150, margin=dict(l=10, r=10, t=10, b=10),
+                      xaxis=dict(side="top", tickangle=0, automargin=True), yaxis=dict(automargin=True))
+    return fig
+
+
+def wrap_label(text: str, width: int) -> list[str]:
+    lines, line = [], ""
+    for word in text.split():
+        if line and len(line) + len(word) + 1 > width:
+            lines.append(line)
+            line = word
+        else:
+            line = f"{line} {word}".strip()
+    return lines + ([line] if line else [])
+
+
+def page_scores(ctx) -> None:
+    ss = st.session_state
+    header("Como cada característica foi avaliada",
+           "Notas de 0 a 10 em escala absoluta, com regras explícitas. Passe o mouse para ver a especificação "
+           "e a origem da nota; ajuste o que discordar logo abaixo.")
+    if not ctx.rows:
+        st.info("Escolha ao menos um notebook na barra lateral.")
+        return
+    plot(scores_heatmap(ctx), key="scores_heatmap")
+    st.caption("✎ nota manual · ? e fundo cinza: dado ausente (recebe a nota padrão) · ⚪ critério com peso 0 (não entra no ranking).")
+
+    st.subheader("Revisar ou ajustar um critério")
+    key = st.selectbox("Critério", sc.CRITERION_KEYS, key="score_crit",
+                       format_func=lambda k: f"{sc.CRITERIA_BY_KEY[k].group} · {sc.CRITERIA_BY_KEY[k].label}")
+    crit = sc.CRITERIA_BY_KEY[key]
+    callout(f"<b>Regra:</b> {esc(crit.rule)}", "info")
+    ev = ctx.ev
+    data = []
+    for name in ctx.order:
+        auto = ev.auto.loc[name, key]
+        data.append({
+            "Notebook": ctx.short[name], "_name": name,
+            "Especificação": sc.spec_text(ctx.by_name[name], key),
+            "Automática": "—" if pd.isna(auto) else fmt_score(auto),
+            "Nota ✏️": float(ev.final.loc[name, key]),
+            "Origem": "manual" if ev.manual.loc[name, key] else "dado ausente" if pd.isna(auto) else (ev.notes.loc[name, key] or "regra"),
+        })
+    frame = pd.DataFrame(data)
+    form = st.form(f"form_scores_{key}_{ss.epoch}", border=False)
+    edited = form.data_editor(
+        frame, hide_index=True, width="stretch", key=f"ed_scores_{key}_{ss.epoch}",
+        column_order=["Notebook", "Especificação", "Automática", "Nota ✏️", "Origem"],
+        disabled=["Notebook", "Especificação", "Automática", "Origem"],
+        column_config={
+            "Especificação": st.column_config.TextColumn(width="large"),
+            "Automática": st.column_config.TextColumn(help="— = dado ausente."),
+            "Nota ✏️": st.column_config.NumberColumn(min_value=0.0, max_value=10.0, step=0.1, format="%.1f",
+                                                    help="Clique para editar (0 a 10)."),
+        })
+    apply = form.form_submit_button("Aplicar notas", type="primary", icon=":material/check:")
+    n_manual = sum(len(v) for v in ss.overrides.values())
+    b2, b3 = st.columns(2)
+    if apply:
+        changed = 0
+        for _, r in edited.iterrows():
+            name, value = r["_name"], r["Nota ✏️"]
+            if pd.isna(value):
+                continue
+            base = ss.missing_score if pd.isna(ev.auto.loc[name, key]) else float(ev.auto.loc[name, key])
+            item = ss.overrides.setdefault(name, {})
+            if abs(float(value) - base) < 0.05:
+                changed += item.pop(key, None) is not None
+            elif abs(item.get(key, -1) - float(value)) >= 1e-9:
+                item[key] = round(float(value), 2)
+                changed += 1
+            if not item:
+                ss.overrides.pop(name, None)
+        ss.epoch += 1
+        toast(f"{changed} nota(s) atualizada(s)." if changed else "Nenhuma nota mudou.", "🎚️")
+        st.rerun()
+    if b2.button("Restaurar automáticas deste critério", icon=":material/undo:", width="stretch",
+                 disabled=not any(key in v for v in ss.overrides.values())):
+        for name in list(ss.overrides):
+            ss.overrides[name].pop(key, None)
+            if not ss.overrides[name]:
+                del ss.overrides[name]
+        ss.epoch += 1
+        st.rerun()
+    if b3.button(f"Restaurar todas ({n_manual} manual)", icon=":material/restart_alt:", width="stretch", disabled=not n_manual):
+        ss.overrides = {}
+        ss.epoch += 1
         st.rerun()
 
-    st.divider()
-    st.markdown("### Presets personalizados")
-    st.caption("Aplique um preset-base, ajuste os pesos acima e salve a combinação com outro nome.")
-    p1,p2=st.columns([2,1])
-    with p1:
-        preset_name=st.text_input("Nome do novo preset",placeholder="Ex.: Trabalho remoto da Lu")
-    with p2:
-        st.write("")
-        st.write("")
-        save_preset=st.button("Salvar preset atual",use_container_width=True)
-    if save_preset:
-        clean_name=preset_name.strip()
-        if not clean_name:
-            st.error("Dê um nome ao preset.")
-        elif clean_name in PRESETS:
-            st.error("Esse nome é reservado para um preset-base do sistema.")
-        else:
-            st.session_state.custom_presets[clean_name]=st.session_state.weights.copy()
-            st.success(f'Preset "{clean_name}" salvo para esta sessão.')
-            st.rerun()
 
-    if st.session_state.custom_presets:
-        st.markdown("**Seus presets**")
-        cp=st.selectbox("Preset personalizado",list(st.session_state.custom_presets),key="custom_preset_manage")
-        cpa,cpb=st.columns(2)
-        if cpa.button("Aplicar",key="apply_custom",use_container_width=True):
-            st.session_state.weights=st.session_state.custom_presets[cp].copy()
-            st.rerun()
-        if cpb.button("Excluir",key="delete_custom",use_container_width=True):
-            del st.session_state.custom_presets[cp]
-            st.rerun()
+def render_contrib_chart(ctx, height_per_item: int = 52) -> None:
+    groups = ctx.ev.group_contrib()
+    order = list(reversed(ctx.order))
+    rank = ctx.rank.set_index("Notebook")
+    labels = [("✕ " if not rank.loc[n, "Atende"] else "") + ctx.short[n] for n in order]
+    fig = go.Figure()
+    for group in sc.CRITERIA_GROUPS:
+        if group not in groups.columns or groups[group].abs().sum() == 0:
+            continue
+        fig.add_bar(x=[groups.loc[n, group] for n in order], y=labels, orientation="h", name=group,
+                    marker=dict(color=GROUP_COLORS[group], line=dict(color="white", width=2)),
+                    hovertemplate=f"<b>%{{y}}</b><br>{group}: %{{x:.1f}} pts<extra></extra>")
+    totals = [ctx.ev.total[n] for n in order]
+    fig.add_scatter(x=totals, y=labels, mode="text", text=[fmt_score(t) for t in totals], textposition="middle right",
+                    textfont=dict(size=13, color=INK, family="Inter, sans-serif"), showlegend=False, hoverinfo="skip")
+    fig.update_layout(barmode="stack", height=max(240, height_per_item * len(order) + 110), margin=dict(l=10, r=10, t=10, b=10),
+                      legend=dict(orientation="h", y=-0.12 if len(order) > 3 else -0.25, x=0, font_size=12, traceorder="normal"),
+                      xaxis=dict(range=[0, max(100, max(totals) + 8)], gridcolor=GRID, ticksuffix="", title=None),
+                      yaxis=dict(automargin=True))
+    plot(fig, key=f"contrib_{height_per_item}")
 
-elif page=="notas":
-    st.subheader("Notas das características")
-    st.caption("A nota sempre aparece junto da especificação real que está sendo avaliada.")
-    score_group=st.selectbox("Grupo",["Todos"]+list(IMPORTANT_GROUPS),key="score_group")
-    criterion_options=IMPORTANT_CRITERIA if score_group=="Todos" else IMPORTANT_GROUPS[score_group]
-    criterion=st.selectbox("Critério",criterion_options,key="score_criterion")
-    frame=current_df().set_index(MODEL_COL)
-    rows=[]
-    for model in selected:
-        if model in frame.index:
-            rows.append({
-                "Notebook":model,
-                criterion:frame.loc[model,criterion],
-                "Nota ✏️":float(st.session_state.scores.loc[model,criterion])
-            })
-    score_edit=pd.DataFrame(rows)
-    if score_edit.empty:
-        st.warning("Selecione pelo menos um item na barra lateral.")
-    else:
-        st.markdown('<div class="edit-hint">✏️ <b>Campo editável:</b> a especificação é apenas para consulta. Clique na célula da coluna <b>Nota ✏️</b> para atribuir uma nota de 0 a 10.</div>',unsafe_allow_html=True)
-        edited_scores=st.data_editor(
-            score_edit,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                criterion:st.column_config.TextColumn(criterion,width="large"),
-                "Nota ✏️":st.column_config.NumberColumn("Nota ✏️",min_value=0.0,max_value=10.0,step=.1,format="%.1f",help="Clique na célula para editar a nota.")
-            },
-            disabled=["Notebook",criterion],
-            key=f"score_editor_{score_group}_{criterion}"
-        )
-        if st.button("Aplicar notas",type="primary"):
-            for _,r in edited_scores.iterrows():
-                st.session_state.scores.loc[r["Notebook"],criterion]=float(r["Nota ✏️"])
-            st.rerun()
-        st.caption("Notas automáticas são apenas um ponto de partida. Para CPUs/GPUs novas ou incomuns, revise a nota manualmente.")
 
-elif page=="ranking":
-    st.subheader("Ranking personalizado")
-    rank=ranking(selected)
+def page_ranking(ctx) -> None:
+    ss = st.session_state
+    header("Resultado da sua ponderação",
+           f"Perfil <b>{esc(matching_preset(ss.weights) or 'personalizado')}</b>. Nota de 0 a 100 = média das notas "
+           "ponderada pelos pesos. Quem não atende aos requisitos fica no fim, marcado com ✕.")
+    rank = ctx.rank
     if rank.empty:
-        st.warning("Selecione pelo menos um item na barra lateral.")
-    else:
-        eligible=rank[rank["Requisitos"]=="Atende"]
-        if len(eligible):
-            winner=eligible.iloc[0]
-            c1,c2,c3,c4=st.columns(4)
-            c1.metric("Melhor entre os elegíveis",winner["Notebook"].split(" — ")[0])
-            c2.metric("Nota",f'{winner["Nota / 100"]:.1f}/100')
-            c3.metric("Critérios ativos",sum(v>0 for v in st.session_state.weights.values()))
-            c4.metric("Elegíveis",f"{len(eligible)}/{len(rank)}")
-        else:
-            st.warning("Nenhum item atende aos requisitos mínimos atuais.")
-        plot=rank.copy()
-        fig=px.bar(plot.sort_values("Pontuação"),x="Nota / 100",y="Notebook",orientation="h",text="Nota / 100",color="Requisitos",range_x=[0,100])
-        fig.update_layout(height=max(360,58*len(plot)),margin=dict(l=10,r=20,t=20,b=10),xaxis_title="Pontuação ponderada",yaxis_title="")
-        st.plotly_chart(fig,use_container_width=True)
-        st.dataframe(rank[["Notebook","Nota / 100","Requisitos","Pendências","Cobertura dos dados"]],hide_index=True,use_container_width=True)
-        if any(str(x)=="5.0" for x in []): pass
-        if current_df()["Preço atual (R$)"].astype(str).str.lower().isin(UNKNOWN_VALUES).all():
-            st.info("Nenhum preço foi cadastrado ainda. O peso de preço está ativo, mas todos recebem nota neutra nesse critério; cadastre os preços para o ranking refletir custo-benefício.")
-        st.download_button("Baixar ranking em CSV",rank.to_csv(index=False).encode("utf-8-sig"),"ranking_notebooks.csv","text/csv")
+        st.info("Escolha ao menos um notebook na barra lateral.")
+        return
+    eligible = rank[rank["Atende"]]
+    podium = eligible.head(3) if not eligible.empty else rank.head(3)
+    if eligible.empty:
+        callout("<b>Nenhum notebook atende a todos os requisitos.</b> O pódio abaixo ignora os requisitos; revise-os na barra lateral.", "warn")
+    cards = []
+    medals = ["1º lugar", "2º lugar", "3º lugar"]
+    for i, (_, r) in enumerate(podium.iterrows()):
+        name = r["Notebook"]
+        good, bad = sc.strengths_weaknesses(ctx.ev, name, 2)
+        price = sc.fmt_brl(r["Preço"]) if pd.notna(r["Preço"]) else "preço não informado"
+        cards.append(
+            f'<div class="nd-pod{" first" if i == 0 else ""}"><div class="pos">{medals[i]}</div>'
+            f'<div class="name">{esc(ctx.short[name])}</div><div class="cfg">{esc(config_of(name))}</div>'
+            f'<div class="sc">{fmt_score(r["Nota"])} <span>/ 100</span></div>'
+            f'<div class="meta">{esc(price)} · técnica {fmt_score(r["Nota técnica"])} · dados {r["Dados conhecidos"]}%</div>'
+            + "".join(chip("+ " + g, "good") for g in good) + "".join(chip("− " + b, "bad") for b in bad) + "</div>")
+    st.html(f'<div class="nd-podium">{"".join(cards)}</div>')
 
-elif page=="itens":
-    st.subheader("Gestão de itens cadastrados")
-    manage_tabs=st.tabs(["Cadastrados","Adicionar / editar","Importar / exportar"])
-    with manage_tabs[0]:
-        frame=current_df()
-        overview_cols=["Marca",MODEL_COL,"Preço atual (R$)","CPU","GPU","RAM instalada (GB)","SSD instalado (GB)","Tela (pol.)","Peso (kg)"]
-        st.dataframe(frame[overview_cols],hide_index=True,use_container_width=True)
-        remove_item=st.selectbox("Remover item",["— selecione —"]+all_models,key="remove_item")
-        confirm=st.checkbox("Confirmo a remoção do item selecionado.",key="confirm_remove")
-        if st.button("Remover",disabled=remove_item=="— selecione —" or not confirm):
-            st.session_state.inventory=[r for r in st.session_state.inventory if str(r.get(MODEL_COL))!=remove_item]
-            reconcile_scores()
-            st.rerun()
-    with manage_tabs[1]:
-        edit_choice=st.selectbox("O que deseja editar?",["➕ Novo item"]+all_models,key="edit_choice")
-        existing=None if edit_choice=="➕ Novo item" else next((r for r in st.session_state.inventory if str(r.get(MODEL_COL))==edit_choice),None)
-        base=normalize_row(existing) if existing else {c:"" for c in SPEC_COLUMNS}
-        st.caption("GPU é o campo usado no ranking. Em novos itens, se ele ficar vazio, o sistema usa GPU dedicada quando houver; caso contrário, usa a integrada.")
-        with st.form("item_form"):
-            values={}
-            for group_name,cols in GROUPS.items():
-                with st.expander(group_name,expanded=group_name in {"Identificação","Compra"}):
-                    for col in cols:
-                        default=base.get(col,"")
-                        values[col]=st.text_input(col,value="" if str(default)=="N/D" and existing is None else str(default),key=f"field_{edit_choice}_{col}")
-            save=st.form_submit_button("Salvar item",type="primary",use_container_width=True)
-        if save:
-            parsed={c:parse_value(c,values.get(c,"")) for c in SPEC_COLUMNS}
-            if str(parsed.get("GPU","")).strip().lower() in UNKNOWN_VALUES:
-                parsed["GPU"]=resolved_gpu(parsed)
-            new_name=str(parsed.get(MODEL_COL,"")).strip()
-            if new_name in {"","N/D"}:
-                st.error("Preencha **Modelo / configuração**.")
+    notes = []
+    if len(eligible) > 1:
+        margin = float(eligible.iloc[0]["Nota"] - eligible.iloc[1]["Nota"])
+        if margin < 2:
+            notes.append(("warn", f"<b>Empate técnico:</b> só {fmt_score(margin)} ponto(s) separam os dois primeiros. "
+                                  "Use preço, garantia, reputação do vendedor e o Duelo (em Comparar) para desempatar."))
+    if not rank["Preço"].notna().any():
+        notes.append(("info", "<b>Sem preços cadastrados:</b> o critério Preço dá a mesma nota a todos. "
+                              "A coluna <b>Nota técnica</b> já desconsidera o preço."))
+    low = rank[rank["Dados conhecidos"] < 85]
+    if not low.empty:
+        verb = "tem" if len(low) == 1 else "têm"
+        notes.append(("info", f"<b>Ficha incompleta:</b> {', '.join(esc(ctx.short[n]) for n in low['Notebook'])} "
+                              f"{verb} parte relevante do peso apoiada em dados ausentes (nota padrão)."))
+    for kind, text in notes:
+        callout(text, kind)
+
+    st.subheader("De onde vem cada nota")
+    st.caption("Cada barra soma os pontos que cada grupo de critérios rende ao total (peso × nota).")
+    render_contrib_chart(ctx)
+
+    table = rank.copy()
+    table["Notebook"] = table["Notebook"].map(ctx.short)
+    table["Situação"] = table["Atende"].map({True: "✓ Atende", False: "✕ Não atende"})
+    table["Preço"] = table["Preço"].map(lambda v: sc.fmt_brl(v) if pd.notna(v) else "—")
+    st.dataframe(table[["Posição", "Notebook", "Nota", "Nota técnica", "Preço", "Situação", "Pendências", "Dados conhecidos"]],
+                 hide_index=True, width="stretch",
+                 column_config={
+                     "Posição": st.column_config.NumberColumn("#", width="small"),
+                     "Nota": st.column_config.ProgressColumn("Nota", min_value=0, max_value=100, format="%.1f"),
+                     "Nota técnica": st.column_config.NumberColumn("Nota técnica", format="%.1f", help="Mesma conta, sem o critério Preço."),
+                     "Preço": st.column_config.TextColumn("Preço"),
+                     "Dados conhecidos": st.column_config.ProgressColumn("Dados conhecidos", min_value=0, max_value=100, format="%d%%",
+                                                                         help="Parcela do peso apoiada em dados informados ou notas manuais."),
+                 })
+    st.download_button("Baixar ranking (CSV)", table.drop(columns=["Atende"]).to_csv(index=False).encode("utf-8-sig"),
+                       "ranking_notebooks.csv", "text/csv", icon=":material/download:")
+
+    st.subheader("A decisão é robusta?")
+    presets = all_presets()
+    positions = sc.preset_positions(ctx.rows, presets, ss.overrides, ss.missing_score, ss.requirements)
+    leader = leader_info(ctx)
+    if leader:
+        wins = int((positions.loc[leader["name"]] == 1).sum())
+        kind = "good" if wins >= len(presets) * 0.7 else "warn"
+        callout(f"<b>{esc(ctx.short[leader['name']])}</b> fica em 1º lugar em <b>{wins} de {len(presets)}</b> perfis de pesos. "
+                + ("Escolha consistente: o resultado não depende de um ajuste fino dos pesos." if kind == "good"
+                   else "O vencedor muda conforme o perfil — vale pensar bem no que pesa mais para você."), kind)
+    view = positions.loc[ctx.order]
+    view.index = [ctx.short[n] for n in view.index]
+    st.dataframe(view.style.map(lambda v: "background-color:#cde2fb;font-weight:700" if v == 1 else ""),
+                 width="stretch", column_config={"_index": st.column_config.TextColumn("Notebook")})
+    st.caption("Posição de cada notebook ao aplicar cada perfil de pesos, mantendo requisitos e notas manuais.")
+
+    st.subheader("Custo-benefício")
+    priced = rank[rank["Preço"].notna() & (rank["Preço"] > 0)]
+    if len(priced) < 2:
+        callout("Cadastre o preço de pelo menos dois notebooks (Equipamentos → Preços) para ver a relação nota técnica × preço.", "info")
+    else:
+        render_value_chart(ctx, priced)
+
+
+def render_value_chart(ctx, priced: pd.DataFrame) -> None:
+    pts = priced.sort_values("Preço")
+    frontier, best = [], -1.0
+    for _, r in pts.iterrows():
+        if r["Nota técnica"] > best + 1e-9:
+            frontier.append(r["Notebook"])
+            best = r["Nota técnica"]
+    on = pts["Notebook"].isin(frontier)
+    fig = go.Figure()
+    fr = pts[on]
+    fig.add_scatter(x=fr["Preço"], y=fr["Nota técnica"], mode="lines", line=dict(color=COLOR_A, width=2, dash="dot"),
+                    hoverinfo="skip", showlegend=False)
+    for flag, name, color in ((True, "Melhor opção para o preço", COLOR_A), (False, "Existe opção melhor e mais barata", "#9a9aa3")):
+        sub = pts[on == flag]
+        if sub.empty:
+            continue
+        fig.add_scatter(x=sub["Preço"], y=sub["Nota técnica"], mode="markers+text", name=name,
+                        text=[ctx.short[n] for n in sub["Notebook"]], textposition="top center", textfont=dict(size=12, color=INK_2),
+                        marker=dict(size=13, color=color, line=dict(color="white", width=2)),
+                        customdata=[[sc.fmt_brl(p), t / (p / 1000)] for p, t in zip(sub["Preço"], sub["Nota técnica"])],
+                        hovertemplate="<b>%{text}</b><br>%{customdata[0]} · nota técnica %{y:.1f}"
+                                      "<br>%{customdata[1]:.2f} pts por R$ 1.000<extra></extra>")
+    span_x = float(pts["Preço"].max() - pts["Preço"].min()) or float(pts["Preço"].max()) * 0.1
+    span_y = float(pts["Nota técnica"].max() - pts["Nota técnica"].min()) or 5.0
+    fig.update_layout(height=460, margin=dict(l=10, r=10, t=30, b=10), legend=dict(orientation="h", y=-0.2, x=0),
+                      xaxis=dict(title="Preço (R$)", gridcolor=GRID, tickprefix="R$ ", separatethousands=True, automargin=True,
+                                 range=[pts["Preço"].min() - span_x * 0.18, pts["Preço"].max() + span_x * 0.18]),
+                      yaxis=dict(title="Nota técnica (sem preço)", gridcolor=GRID, automargin=True,
+                                 range=[pts["Nota técnica"].min() - span_y * 0.15, pts["Nota técnica"].max() + span_y * 0.2]))
+    plot(fig, key="value_chart")
+    st.caption("A linha liga as opções que nenhum outro notebook supera sendo mais barato (fronteira de Pareto). "
+               "Fora dela, há alternativa melhor por menos.")
+
+
+def page_summary(ctx) -> None:
+    header("Cada notebook em um cartão",
+           "Ordem do ranking atual. Pontos fortes e fracos são relativos aos demais notebooks em análise, "
+           "considerando o peso de cada critério.")
+    if not ctx.rows:
+        st.info("Escolha ao menos um notebook na barra lateral.")
+        return
+    rank = ctx.rank.set_index("Notebook")
+    cards = []
+    for name in ctx.order:
+        row, r = ctx.by_name[name], rank.loc[name]
+        good, bad = sc.strengths_weaknesses(ctx.ev, name)
+        summary = row.get("Resumo")
+        if sc.is_unknown(summary):
+            hi, lo = row.get("Destaques objetivos"), row.get("Limitações / ressalvas")
+            summary = " ".join(x for x in (None if sc.is_unknown(hi) else f"{hi}.", None if sc.is_unknown(lo) else f"Atenção: {lo}.") if x) \
+                or "Sem resumo cadastrado."
+        ram = sc.number_field(row, "RAM instalada (GB)")
+        ssd = sc.number_field(row, "SSD instalado (GB)")
+        specs = [
+            ("CPU", str(row.get("CPU"))), ("GPU", str(row.get("GPU"))),
+            ("RAM", f"{fmt_value(ram)} GB {row.get('Tipo RAM', '')}".strip() if ram else "N/D"),
+            ("SSD", (f"{fmt_value(ssd / 1024)} TB" if ssd and ssd >= 1000 else f"{fmt_value(ssd)} GB") if ssd else "N/D"),
+            ("Tela", f"{fmt_value(row.get('Tela (pol.)'))}\" {row.get('Proporção', '')} {row.get('Painel', '')}".strip()),
+            ("Bateria · peso", f"{fmt_value(row.get('Bateria (Wh)'))} Wh · {fmt_value(row.get('Peso (kg)'))} kg"),
+        ]
+        price = sc.fmt_brl(r["Preço"]) if pd.notna(r["Preço"]) else "preço não informado"
+        links = [(lbl, safe_url(row.get(col))) for lbl, col in (("Anúncio ↗", "Link do anúncio"), ("Ficha técnica ↗", "Fonte técnica principal"))]
+        cards.append(
+            f'<div class="nd-card{"" if r["Atende"] else " out"}"><div class="nd-card-head"><div class="nd-rank">{r["Posição"]}º</div>'
+            f'<div><div class="nd-card-title">{esc(ctx.short[name])}</div><div class="nd-card-sub">{esc(config_of(name))}</div></div>'
+            f'<div class="nd-score">{fmt_score(r["Nota"])}<small>de 100</small></div></div>'
+            f'<div>{status_chip(r["Atende"], r["Pendências"])}{chip(price, "blue")}{chip("dados " + str(r["Dados conhecidos"]) + "%")}</div>'
+            f'<p>{esc(str(summary))}</p>'
+            '<div class="nd-specs">' + "".join(f'<div><div class="k">{esc(k)}</div><div class="v">{esc(v)}</div></div>' for k, v in specs) + "</div>"
+            '<div class="nd-pc"><div class="pro"><div class="h">Pontos fortes</div><ul>'
+            + ("".join(f"<li>{esc(g)}</li>" for g in good) or "<li>—</li>") + '</ul></div><div class="con"><div class="h">Pontos fracos</div><ul>'
+            + ("".join(f"<li>{esc(b)}</li>" for b in bad) or "<li>—</li>") + "</ul></div></div>"
+            + ('<div class="nd-links">' + "".join(f'<a href="{esc(u)}" target="_blank" rel="noopener">{lbl}</a>' for lbl, u in links if u) + "</div>"
+               if any(u for _, u in links) else "")
+            + "</div>")
+    st.html(f'<div class="nd-cards">{"".join(cards)}</div>')
+    with st.expander("Como interpretar", icon=":material/info:"):
+        st.markdown(
+            "1. **Requisitos mínimos** eliminam opções incompatíveis.\n"
+            "2. **Pesos** representam suas prioridades; **notas** medem cada característica em escala absoluta.\n"
+            "3. **Dados conhecidos** mostra quanto do peso está apoiado em informação real — e não na nota padrão de dado ausente.\n"
+            "4. O ranking organiza a decisão, mas não substitui preço atualizado, garantia, reputação do vendedor e a leitura do anúncio.")
+
+
+# ---------------------------------------------------------------------------
+# Equipamentos
+# ---------------------------------------------------------------------------
+def save_item(original: str | None) -> None:
+    """Callback do formulário: valida e grava o item (novo ou editado)."""
+    ss = st.session_state
+    prefix = ss.get("_form_prefix", "")
+    parsed = {}
+    for col in SPEC_COLUMNS:
+        text = str(ss.get(f"{prefix}{col}", "")).strip()
+        if not text:
+            parsed[col] = "N/D"
+        elif col in NUMERIC_FIELDS:
+            number = sc.parse_number(text, money=(col == PRICE_COL))
+            parsed[col] = (int(number) if float(number).is_integer() else number) if number is not None else text
+        else:
+            parsed[col] = text
+    if sc.is_unknown(parsed.get("GPU")):
+        parsed["GPU"] = sc.resolved_gpu(parsed)
+    new_name = str(parsed[MODEL_COL]).strip()
+    if sc.is_unknown(new_name):
+        ss.form_error = "Preencha **Modelo / configuração** — é o identificador do notebook."
+        return
+    names = [str(r[MODEL_COL]) for r in ss.inventory]
+    if new_name in names and new_name != original:
+        ss.form_error = "Já existe um notebook com esse Modelo / configuração."
+        return
+    ss.form_error = None
+    item = sc.normalize_item(parsed, SPEC_COLUMNS)
+    if original and original in names:
+        old = ss.inventory[names.index(original)]
+        ss.inventory[names.index(original)] = item
+        kept = {}
+        for key, value in ss.overrides.pop(original, {}).items():
+            if all(sc.norm(old.get(src)) == sc.norm(item.get(src)) for src in sc.CRITERIA_BY_KEY[key].sources):
+                kept[key] = value  # nota manual só sobrevive se a especificação de origem não mudou
+        if kept:
+            ss.overrides[new_name] = kept
+        if original in ss.excluded:
+            ss.excluded = (ss.excluded - {original}) | {new_name}
+        toast(f"“{new_name}” atualizado.")
+    else:
+        ss.inventory.append(item)
+        toast(f"“{new_name}” cadastrado.")
+    ss.edit_choice = new_name
+    ss.epoch += 1
+
+
+def page_items(ctx) -> None:
+    ss = st.session_state
+    header("Cadastro de notebooks",
+           "Cadastre, edite, atualize preços e faça backup. Campos vazios viram N/D; números aceitam vírgula decimal.")
+    t_list, t_prices, t_form, t_backup = st.tabs([":material/list: Cadastrados", ":material/sell: Preços",
+                                                  ":material/edit: Cadastrar / editar", ":material/save: Backup"])
+    with t_list:
+        overview = pd.DataFrame([{
+            "Notebook": ctx.short[str(r[MODEL_COL])], "Configuração": config_of(str(r[MODEL_COL])),
+            "Preço": sc.fmt_brl(sc.number_field(r, PRICE_COL)), "CPU": r.get("CPU"),
+            "RAM (GB)": sc.number_field(r, "RAM instalada (GB)"), "SSD (GB)": sc.number_field(r, "SSD instalado (GB)"),
+            "Tela (pol.)": sc.number_field(r, "Tela (pol.)"), "Peso (kg)": sc.number_field(r, "Peso (kg)"),
+            "Em análise": str(r[MODEL_COL]) not in ss.excluded,
+        } for r in ctx.inventory])
+        st.dataframe(overview, hide_index=True, width="stretch",
+                     column_config={"Tela (pol.)": st.column_config.NumberColumn(format="localized"),
+                                    "Peso (kg)": st.column_config.NumberColumn(format="localized")})
+        with st.expander("Remover um notebook", icon=":material/delete:"):
+            victim = st.selectbox("Notebook", ctx.all_names, format_func=lambda n: ctx.short[n], key="remove_item", index=None,
+                                  placeholder="Escolha…")
+            confirm = st.checkbox("Confirmo a remoção (não dá para desfazer, exceto restaurando um backup).", key="confirm_remove")
+            if st.button("Remover", type="primary", disabled=not (victim and confirm), icon=":material/delete:"):
+                ss.inventory = [r for r in ss.inventory if str(r[MODEL_COL]) != victim]
+                ss.overrides.pop(victim, None)
+                ss.excluded.discard(victim)
+                ss.confirm_remove = False
+                toast(f"“{ctx.short[victim]}” removido.", "🗑️")
+                st.rerun()
+
+    with t_prices:
+        st.caption("Atualize preços e links de uma vez. O preço é o único critério relativo: a opção mais barata recebe 10.")
+        frame = pd.DataFrame([{"_name": str(r[MODEL_COL]), "Notebook": ctx.short[str(r[MODEL_COL])],
+                               "Preço (R$)": sc.fmt_num(sc.number_field(r, PRICE_COL), 2) if sc.number_field(r, PRICE_COL) else "",
+                               "Link do anúncio": safe_url(r.get("Link do anúncio")) or ""} for r in ctx.inventory])
+        form = st.form(f"form_prices_{ss.epoch}", border=False)
+        edited = form.data_editor(frame, hide_index=True, width="stretch", key=f"ed_prices_{ss.epoch}",
+                                column_order=["Notebook", "Preço (R$)", "Link do anúncio"], disabled=["Notebook"],
+                                column_config={
+                                    "Preço (R$)": st.column_config.TextColumn(help="Ex.: 3.499,90 ou 3499. Vazio = sem preço."),
+                                    "Link do anúncio": st.column_config.LinkColumn(width="large", validate=r"^https?://.*",
+                                                                                   display_text=r"https?://(?:www\.)?([^/]+)"),
+                                })
+        if form.form_submit_button("Salvar preços e links", type="primary", icon=":material/check:"):
+            by_name = {str(r[MODEL_COL]): r for r in ss.inventory}
+            invalid = []
+            for _, r in edited.iterrows():
+                item = by_name.get(r["_name"])
+                if item is None:
+                    continue
+                text = str(r["Preço (R$)"] or "").strip()
+                price = sc.parse_number(text, money=True) if text else None
+                if text and not price:
+                    invalid.append(r["Notebook"])
+                    continue
+                item[PRICE_COL] = "N/D" if not price else (int(price) if float(price).is_integer() else round(price, 2))
+                link = str(r["Link do anúncio"] or "").strip()
+                item["Link do anúncio"] = link if safe_url(link) else "N/D"
+            if invalid:
+                st.error("Preço não reconhecido em: " + ", ".join(invalid) + ". Use, por exemplo, 3.499,90.")
             else:
-                duplicate=any(str(r.get(MODEL_COL))==new_name for r in st.session_state.inventory if r is not existing)
-                if duplicate:
-                    st.error("Já existe um item com esse mesmo nome/modelo.")
-                else:
-                    old_name=str(existing.get(MODEL_COL)) if existing else None
-                    if existing:
-                        st.session_state.inventory[st.session_state.inventory.index(existing)]=parsed
-                    else:
-                        st.session_state.inventory.append(parsed)
-                    if old_name and old_name!=new_name and old_name in st.session_state.scores.index:
-                        st.session_state.scores=st.session_state.scores.drop(index=old_name)
-                    reconcile_scores(reset_model=new_name)
-                    st.rerun()
-    with manage_tabs[2]:
-        export_json=json.dumps(st.session_state.inventory,ensure_ascii=False,indent=2)
-        st.download_button("Baixar backup JSON",export_json.encode("utf-8"),"notebooks_backup.json","application/json",use_container_width=True)
-        uploaded=st.file_uploader("Importar backup JSON",type=["json"])
+                ss.epoch += 1
+                toast("Preços e links salvos.", "🏷️")
+                st.rerun()
+
+    with t_form:
+        new_blank, new_copy = "➕ Novo (em branco)", "📄 Novo a partir de outro"
+        options = [new_blank, new_copy] + ctx.all_names
+        if ss.get("edit_choice") not in options:
+            ss.edit_choice = new_blank
+        c1, c2 = st.columns(2)
+        choice = c1.selectbox("O que deseja fazer?", options, key="edit_choice",
+                              format_func=lambda n: n if n in (new_blank, new_copy) else f"Editar: {ctx.short.get(n, n)}")
+        base_name = None
+        if choice == new_copy:
+            base_name = c2.selectbox("Copiar dados de", ctx.all_names, format_func=lambda n: ctx.short[n], key="copy_from")
+        elif choice != new_blank:
+            base_name = choice
+        base = ctx.by_name.get(base_name) if base_name else None
+        original = choice if choice not in (new_blank, new_copy) else None
+        prefix = f"f_{ss.epoch}_{hashlib.md5(f'{choice}|{base_name}'.encode()).hexdigest()[:8]}_"
+        ss._form_prefix = prefix
+        if ss.get("form_error"):
+            st.error(ss.form_error)
+        st.caption("Dica: **GPU** é o campo usado na pontuação — se ficar vazio, usa a dedicada (se houver) ou a integrada. "
+                   "Informe o **PassMark** da CPU (cpubenchmark.net) para uma nota de processador precisa.")
+        with st.form(f"item_form_{prefix}", border=False):
+            for group, cols in GROUPS.items():
+                with st.expander(group, expanded=group in {"Identificação", "Compra"}):
+                    grid = st.columns(2)
+                    for i, col in enumerate(cols):
+                        value = "" if base is None else form_value(base.get(col, "N/D"))
+                        if base is not None and col == MODEL_COL and choice == new_copy:
+                            value = f"{value} (cópia)"
+                        target = st if col in LONG_TEXT_FIELDS else grid[i % 2]
+                        if col in LONG_TEXT_FIELDS:
+                            target.text_area(col, value=value, key=f"{prefix}{col}", help=FIELD_HELP.get(col), height=90)
+                        else:
+                            target.text_input(col, value=value, key=f"{prefix}{col}", help=FIELD_HELP.get(col))
+            st.form_submit_button("Salvar notebook", type="primary", icon=":material/save:", width="stretch",
+                                  on_click=save_item, args=(original,))
+
+    with t_backup:
+        st.markdown("**Backup completo** — notebooks, pesos, perfis, requisitos e notas manuais.")
+        payload = json.dumps(storage.to_backup(current_state()), ensure_ascii=False, indent=1)
+        st.download_button("Baixar backup (JSON)", payload.encode("utf-8"), "notedalu_backup.json", "application/json",
+                           icon=":material/download:")
+        uploaded = st.file_uploader("Restaurar backup", type=["json"], help="Aceita também o backup antigo (só a lista de notebooks).")
         if uploaded is not None:
             try:
-                imported=json.load(uploaded)
-                if not isinstance(imported,list): raise ValueError("O JSON precisa conter uma lista de itens.")
-                normalized=[normalize_row(item) for item in imported if isinstance(item,dict)]
-                if st.button("Substituir cadastro pelo arquivo importado",type="primary"):
-                    st.session_state.inventory=normalized
-                    st.session_state.scores=build_initial_scores(current_df())
+                state = storage.parse_backup(json.load(uploaded))
+                n_items = len(state["inventory"])
+                st.info(f"Arquivo válido: {n_items} notebook(s)" + (" e configurações de decisão." if len(state) > 1 else "."))
+                if st.button("Substituir dados atuais pelo backup", type="primary", icon=":material/upload:"):
+                    merged = {**current_state(), **state}
+                    if len(state) == 1:  # formato antigo: notas manuais não se aplicam aos novos itens
+                        merged["overrides"] = {}
+                    apply_state(merged)
+                    toast("Backup restaurado.", "♻️")
                     st.rerun()
-            except Exception as exc:
+            except (ValueError, UnicodeDecodeError) as exc:
                 st.error(f"Não foi possível ler o arquivo: {exc}")
-        st.warning("Cadastros feitos pela interface ficam na sessão atual. Use o backup JSON para preservá-los entre reinicializações/redeploys do Railway.")
+        st.divider()
+        st.markdown("**Recomeçar do zero** — volta à base original de notebooks e às configurações padrão.")
+        sure = st.checkbox("Entendo que cadastros, pesos e notas manuais atuais serão descartados.", key="confirm_reset")
+        if st.button("Restaurar dados originais", disabled=not sure, icon=":material/restart_alt:"):
+            apply_state(default_state())
+            ss.excluded = set()
+            ss.confirm_reset = False
+            toast("Dados originais restaurados.", "♻️")
+            st.rerun()
+        if storage.data_file() is None:
+            st.caption("A persistência em disco está desligada (NOTEDALU_PERSIST=0): faça backup para não perder alterações.")
+        else:
+            st.caption(f"Os dados também são salvos automaticamente em `{storage.data_file()}` no servidor. "
+                       "Em hospedagens com disco efêmero (ex.: Railway sem volume), um redeploy apaga esse arquivo — mantenha um backup.")
 
-elif page=="resumo":
-    st.subheader("Resumo dos equipamentos")
-    frame=current_df()
-    for _,row in frame.iterrows():
-        with st.container(border=True):
-            st.markdown(f"### {row[MODEL_COL]}")
-            st.write(notebook_summary(row))
-            c1,c2,c3,c4,c5=st.columns(5)
-            c1.metric("CPU",str(row["CPU"]))
-            c2.metric("GPU",str(row["GPU"]))
-            c3.metric("RAM",f'{row["RAM instalada (GB)"]} GB')
-            c4.metric("Bateria",f'{row["Bateria (Wh)"]} Wh')
-            c5.metric("Peso",f'{row["Peso (kg)"]} kg')
-            price=row.get("Preço atual (R$)","N/D")
-            if str(price).lower() not in UNKNOWN_VALUES:
-                st.caption(f"Preço cadastrado: R$ {float(price):,.2f}".replace(",", "X").replace(".", ",").replace("X","."))
-    st.divider()
-    st.markdown("**Como interpretar o sistema**")
-    st.write("1. Requisitos mínimos eliminam opções incompatíveis. 2. Pesos representam suas prioridades. 3. Notas representam a qualidade de cada spec. 4. A cobertura dos dados mostra quanto da comparação está apoiada em informações conhecidas. 5. O ranking organiza a decisão, mas não substitui preço atualizado, garantia, reputação do vendedor e inspeção final do anúncio.")
+
+# ---------------------------------------------------------------------------
+# Execução
+# ---------------------------------------------------------------------------
+init_state()
+for _icon, _message in st.session_state.pop("toasts", []):
+    st.toast(_message, icon=_icon)
+inject_css()
+CTX = build_context()
+
+PAGES = {
+    "home": st.Page(lambda: page_home(CTX), title="Início", icon=":material/home:", url_path="inicio", default=True),
+    "compare": st.Page(lambda: page_compare(CTX), title="Comparar", icon=":material/compare_arrows:", url_path="comparar"),
+    "weights": st.Page(lambda: page_weights(CTX), title="Pesos", icon=":material/tune:", url_path="pesos"),
+    "scores": st.Page(lambda: page_scores(CTX), title="Notas", icon=":material/grading:", url_path="notas"),
+    "ranking": st.Page(lambda: page_ranking(CTX), title="Ranking", icon=":material/leaderboard:", url_path="ranking"),
+    "summary": st.Page(lambda: page_summary(CTX), title="Resumo", icon=":material/description:", url_path="resumo"),
+    "items": st.Page(lambda: page_items(CTX), title="Equipamentos", icon=":material/laptop:", url_path="equipamentos"),
+}
+LEGACY_PAGES = {"comparativo": "compare", "pesos": "weights", "notas": "scores", "ranking": "ranking",
+                "itens": "items", "resumo": "summary", "inicio": "home"}
+
+render_sidebar(CTX)
+navigation = st.navigation(list(PAGES.values()), position="top")
+legacy = st.query_params.get("page")
+if legacy in LEGACY_PAGES:
+    del st.query_params["page"]
+    st.switch_page(PAGES[LEGACY_PAGES[legacy]])
+try:
+    navigation.run()
+finally:
+    autosave()
