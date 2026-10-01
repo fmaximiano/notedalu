@@ -1,25 +1,39 @@
-# Nota da Lu — comparador de notebooks
+# Nota da Lu — comparador racional de notebooks
 
-Aplicação interativa em **Python + Streamlit** para comparar notebooks e montar um ranking de compra personalizado.
+Aplicação em **Python + Streamlit** para comparar notebooks, estabelecer requisitos mínimos e construir um ranking de compra personalizado.
+
+## Fluxo de decisão
+
+O sistema separa quatro etapas:
+
+1. **Especificações** — o que cada equipamento realmente oferece.
+2. **Requisitos mínimos** — condições obrigatórias que podem eliminar uma opção.
+3. **Pesos e notas** — importância de cada critério e qualidade da configuração correspondente.
+4. **Ranking** — média ponderada apenas como apoio à decisão.
+
+A página inicial funciona como menu visual e os cards levam diretamente a cada área.
 
 ## Recursos
 
-- página inicial orientando as principais ações;
-- ficha técnica completa com todos os critérios levantados;
-- **comparativo lado a lado de até 10 itens**;
-- filtro por grupos de specs e opção de mostrar somente diferenças;
-- pesos de 0 a 10 apenas para os critérios mais relevantes;
-- notas editáveis de 0 a 10 com a **spec original visível ao lado**;
-- ranking ponderado atualizado em tempo real;
-- presets: equilibrado, mobilidade, produtividade, desempenho, tela/multimídia e expansão/longevidade;
-- gestão de itens: cadastrar, editar e remover notebooks;
-- cadastro guiado por grupos de especificações;
-- backup e restauração dos cadastros em JSON;
+- home com cards clicáveis;
+- comparação lado a lado de até 10 equipamentos;
+- filtro por grupos de specs;
+- opção de mostrar somente diferenças;
+- critério unificado **GPU**, compatível com gráficos integrados ou dedicados;
+- campos técnicos separados de GPU integrada e GPU dedicada mantidos na ficha;
+- **Preço atual (R$)** como dado e critério opcional de decisão;
+- presets de perfil de compra;
+- pesos apenas para critérios relevantes;
+- notas editáveis com a **spec original visível ao lado**;
+- requisitos mínimos para preço, RAM, SSD, peso e USB-C com carregamento;
+- indicador de **cobertura dos dados** para reduzir falsa precisão;
+- ranking ponderado;
+- gestão de itens: cadastrar, editar e remover;
+- backup/restauração dos cadastros em JSON;
 - resumo executivo;
-- exportação do ranking e comparativos em CSV;
-- fontes e links dos anúncios preservados na base.
+- exportação em CSV.
 
-## Como funciona a pontuação
+## Pontuação
 
 A nota final é uma média ponderada:
 
@@ -27,7 +41,27 @@ A nota final é uma média ponderada:
 nota = soma(nota_do_critério × peso_do_critério) / soma(pesos)
 ```
 
-Peso 0 remove o critério do ranking. As notas iniciais são heurísticas para servir como ponto de partida e podem ser alteradas livremente.
+Critérios com peso 0 são ignorados.
+
+Os requisitos mínimos são tratados separadamente: um equipamento que não atende a um requisito continua visível, mas aparece como **Não atende** no ranking.
+
+## GPU
+
+O campo **GPU** é usado no ranking.
+
+Ao cadastrar um equipamento:
+
+- se houver GPU dedicada, ela pode ser usada como GPU principal;
+- caso contrário, o sistema usa a GPU integrada;
+- os campos técnicos `GPU integrada` e `GPU dedicada` continuam disponíveis na ficha completa.
+
+As notas automáticas de GPUs são heurísticas e podem ser alteradas manualmente.
+
+## Preço
+
+O campo **Preço atual (R$)** é opcional. Quando informado, entra no ranking como critério em que valores menores recebem notas maiores em relação às opções cadastradas.
+
+Sem preços cadastrados, o sistema informa que a avaliação de custo-benefício está incompleta.
 
 ## Executar localmente
 
@@ -42,18 +76,19 @@ O projeto inclui `Dockerfile`, `start.sh` e `railway.json`.
 
 No Railway:
 
-1. crie um projeto com **Deploy from GitHub Repo**;
+1. use **Deploy from GitHub Repo**;
 2. selecione `fmaximiano/notedalu`;
-3. mantenha o **Custom Start Command vazio**;
-4. aguarde o build/deploy;
-5. em **Networking**, gere um domínio público.
+3. deixe **Custom Start Command** vazio;
+4. gere um domínio em **Networking**.
 
-O container inicia o Streamlit usando a porta dinâmica `$PORT`.
+O container usa automaticamente a porta `$PORT`.
 
-## Persistência dos itens cadastrados
+## Persistência
 
-Os 7 notebooks originais fazem parte do código. Itens adicionados ou alterados pela interface ficam na sessão do Streamlit. Como containers do Railway podem ser reiniciados, a tela **Itens cadastrados → Importar / exportar** permite baixar e restaurar um backup JSON.
+Os notebooks originais fazem parte do código. Alterações feitas pela interface ficam na sessão do Streamlit.
 
-## Observação
+Para preservar cadastros entre reinicializações/redeploys do Railway, use **Itens cadastrados → Importar / exportar** e salve um backup JSON.
 
-“N/D” significa que a informação não foi confirmada com segurança. Specs incertas são mantidas explícitas em vez de serem tratadas como fatos.
+## Dados incompletos
+
+“N/D” indica informação não confirmada. O ranking também exibe a **cobertura dos dados** de cada equipamento, evitando tratar uma opção com muitas lacunas como se tivesse a mesma confiabilidade de outra com ficha bem documentada.
