@@ -34,3 +34,24 @@ Peso 0 remove o critério do ranking. As notas iniciais são apenas um ponto de 
 ## Observação
 
 “N/D” significa que a informação não foi confirmada com segurança. No ThinkPad E14, o anúncio não informa o submodelo/MTM completo, portanto alguns componentes são apresentados como variantes.
+
+
+## Deploy no Railway
+
+O repositório já inclui `railway.json` com:
+
+- builder Railpack;
+- start command do Streamlit;
+- bind em `0.0.0.0`;
+- porta dinâmica via `$PORT`;
+- health check em `/_stcore/health`;
+- restart automático em caso de falha.
+
+No Railway:
+
+1. Crie um projeto com **Deploy from GitHub Repo**.
+2. Selecione `fmaximiano/notedalu`.
+3. Aguarde o build/deploy.
+4. Em **Networking**, gere um domínio público.
+
+Não é necessário configurar manualmente o Start Command.
