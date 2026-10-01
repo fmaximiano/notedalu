@@ -1,4 +1,4 @@
-import math
+import json
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -49,199 +49,497 @@ SUMMARY = {
 "Dell M80":"Mesmo chassi do A50, com 16 GB e SSD de 1 TB. Tela 120 Hz; USB‑C continua limitado a dados e a bateria é de 41 Wh."
 }
 
-df = pd.DataFrame(NOTEBOOKS)
+# ---------------------------------------------------------------------
+# Estrutura de critérios
+# ---------------------------------------------------------------------
+SPEC_COLUMNS = list(NOTEBOOKS[0].keys())
 MODEL_COL = "Modelo / configuração"
-MODELS = df[MODEL_COL].tolist()
 
 GROUPS = {
-"Identificação":["Marca","Modelo / configuração","Código / SKU","Ano/geração aproximada","Sistema operacional"],
-"Processador e gráficos":["CPU","Família / geração CPU","Arquitetura CPU","Núcleos","P-cores","E-cores","LP E-cores","Threads","Clock base / referência (GHz)","Turbo máx. (GHz)","Cache L3 (MB)","NPU","GPU integrada","GPU dedicada"],
-"Memória":["RAM instalada (GB)","Tipo RAM","Velocidade RAM","Configuração RAM","RAM soldada","Slots RAM físicos","Slots RAM livres","RAM máxima oficial (GB)","Dual-channel de fábrica","Expansão de RAM"],
-"Armazenamento":["SSD instalado (GB)","Tipo/interface SSD","Formato SSD","Slots M.2 totais","Slots M.2 livres","Armazenamento máx./observação"],
-"Tela":["Tela (pol.)","Resolução","Proporção","Painel","Acabamento","Touch","Taxa de atualização (Hz)","Brilho (nits)","Cobertura de cores","Contraste"],
-"Câmera e entrada":["Webcam","Tampa de privacidade","Teclado ABNT2","Teclado numérico","Teclado retroiluminado","Touchpad"],
-"Conectividade":["Wi‑Fi","Bluetooth","Ethernet RJ‑45","USB‑A","USB‑C","Thunderbolt / USB4","USB‑C com vídeo","USB‑C com carregamento","HDMI","Leitor de cartões","Áudio P2"],
-"Áudio":["Áudio / alto-falantes","Microfones"],
-"Bateria e energia":["Bateria (Wh)","Células","Autonomia declarada","Carregador (W)","Carregamento USB‑C"],
-"Dimensões e construção":["Largura (mm)","Profundidade (mm)","Espessura (mm)","Peso (kg)","Material / construção","Cor"],
-"Segurança e suporte":["TPM","Trava de segurança","Leitor biométrico","Garantia informada"],
-"Observações e fontes":["Destaques objetivos","Limitações / ressalvas","Link do anúncio","Fonte técnica principal","Fonte complementar"],
+    "Identificação":["Marca","Modelo / configuração","Código / SKU","Ano/geração aproximada","Sistema operacional"],
+    "Processador e gráficos":["CPU","Família / geração CPU","Arquitetura CPU","Núcleos","P-cores","E-cores","LP E-cores","Threads","Clock base / referência (GHz)","Turbo máx. (GHz)","Cache L3 (MB)","NPU","GPU integrada","GPU dedicada"],
+    "Memória":["RAM instalada (GB)","Tipo RAM","Velocidade RAM","Configuração RAM","RAM soldada","Slots RAM físicos","Slots RAM livres","RAM máxima oficial (GB)","Dual-channel de fábrica","Expansão de RAM"],
+    "Armazenamento":["SSD instalado (GB)","Tipo/interface SSD","Formato SSD","Slots M.2 totais","Slots M.2 livres","Armazenamento máx./observação"],
+    "Tela":["Tela (pol.)","Resolução","Proporção","Painel","Acabamento","Touch","Taxa de atualização (Hz)","Brilho (nits)","Cobertura de cores","Contraste"],
+    "Câmera e entrada":["Webcam","Tampa de privacidade","Teclado ABNT2","Teclado numérico","Teclado retroiluminado","Touchpad"],
+    "Conectividade":["Wi‑Fi","Bluetooth","Ethernet RJ‑45","USB‑A","USB‑C","Thunderbolt / USB4","USB‑C com vídeo","USB‑C com carregamento","HDMI","Leitor de cartões","Áudio P2"],
+    "Áudio":["Áudio / alto-falantes","Microfones"],
+    "Bateria e energia":["Bateria (Wh)","Células","Autonomia declarada","Carregador (W)","Carregamento USB‑C"],
+    "Dimensões e construção":["Largura (mm)","Profundidade (mm)","Espessura (mm)","Peso (kg)","Material / construção","Cor"],
+    "Segurança e suporte":["TPM","Trava de segurança","Leitor biométrico","Garantia informada"],
+    "Observações e fontes":["Destaques objetivos","Limitações / ressalvas","Link do anúncio","Fonte técnica principal","Fonte complementar"],
 }
 ALL_CRITERIA = [c for cols in GROUPS.values() for c in cols]
 
-DEFAULT_WEIGHTS = {c: 0 for c in ALL_CRITERIA}
-DEFAULT_WEIGHTS.update({
-"CPU":8,"Núcleos":3,"Threads":3,"Turbo máx. (GHz)":3,"NPU":2,"GPU integrada":3,
-"RAM instalada (GB)":8,"Tipo RAM":3,"Velocidade RAM":3,"Dual-channel de fábrica":4,"Expansão de RAM":6,"RAM máxima oficial (GB)":4,
-"SSD instalado (GB)":5,"Tipo/interface SSD":3,"Slots M.2 livres":4,
-"Resolução":5,"Proporção":3,"Painel":6,"Taxa de atualização (Hz)":3,"Brilho (nits)":5,"Cobertura de cores":4,
-"Webcam":3,"Tampa de privacidade":2,"Teclado retroiluminado":2,
-"Wi‑Fi":4,"Ethernet RJ‑45":2,"USB‑C":3,"Thunderbolt / USB4":4,"USB‑C com vídeo":4,"USB‑C com carregamento":4,"HDMI":2,"Leitor de cartões":1,
-"Bateria (Wh)":8,"Carregamento USB‑C":3,"Peso (kg)":7,"Espessura (mm)":2,"Material / construção":4,
-"Leitor biométrico":2,"Garantia informada":2,
-})
+# Pesos e notas ficam restritos ao que realmente tende a influenciar uma compra.
+IMPORTANT_CRITERIA = [
+    "CPU","GPU integrada",
+    "RAM instalada (GB)","Tipo RAM","Dual-channel de fábrica","Expansão de RAM","RAM máxima oficial (GB)",
+    "SSD instalado (GB)","Tipo/interface SSD","Slots M.2 livres",
+    "Resolução","Proporção","Painel","Taxa de atualização (Hz)","Brilho (nits)","Cobertura de cores",
+    "Webcam","Wi‑Fi","Thunderbolt / USB4","USB‑C com vídeo","USB‑C com carregamento",
+    "Bateria (Wh)","Peso (kg)","Material / construção",
+]
 
-CPU_SCORE = {"Intel Core Ultra 5 115U":8.2,"Intel Core 5 120U":8.4,"Intel Core i7-1355U":8.5,"Intel Core i5-1335U":7.7,"Intel Core i5-1334U":7.5,"Intel Core i7-10510U":5.2}
-GPU_SCORE = {"Intel Iris Xe Graphics":7.5,"Intel Graphics":7.2,"Intel UHD Graphics":5.0,"Intel UHD Graphics (ficha comercial)":5.5}
-
-def text_score(v):
-    s=str(v).lower()
-    if s in {"n/d","não informado","não confirmado","none","nan"}: return 5.0
-    if "não determin" in s or "varia " in s or "opcional" in s: return 5.0
-    if s.startswith("sim") or "gigabit" in s or "power delivery" in s or "displayport" in s: return 8.5
-    if s == "não": return 3.0
-    return 6.5
-
-def numeric_scores(series, lower_is_better=False):
-    x=pd.to_numeric(series, errors="coerce")
-    if x.notna().sum() < 2 or x.max()==x.min():
-        return pd.Series([7.0 if pd.notna(v) else 5.0 for v in x], index=series.index)
-    z=(x-x.min())/(x.max()-x.min())
-    if lower_is_better: z=1-z
-    return 4.0 + z*6.0
-
-LOWER_BETTER={"Peso (kg)","Espessura (mm)","Largura (mm)","Profundidade (mm)"}
-
-def initial_scores():
-    out=pd.DataFrame(index=MODELS, columns=ALL_CRITERIA, dtype=float)
-    for c in ALL_CRITERIA:
-        if pd.api.types.is_numeric_dtype(df[c]):
-            out[c]=numeric_scores(df[c], c in LOWER_BETTER).values
-        else:
-            out[c]=df[c].map(text_score).values
-    out["CPU"]=df["CPU"].map(CPU_SCORE).fillna(6.0).values
-    out["GPU integrada"]=df["GPU integrada"].map(GPU_SCORE).fillna(6.0).values
-    # Rubricas úteis para campos textuais de alta relevância
-    out["Expansão de RAM"]=[2,2,7,5,10,8,5]
-    out["Tipo RAM"]=[6.5,9,6,6,9,9,9]
-    out["Dual-channel de fábrica"]=[8.5,9,3,9,3,3,3]
-    out["Painel"]=[8,9,5.5,8.5,9,7.5,7.5]
-    out["Resolução"]=[7,9,7,9,9,7,7]
-    out["Proporção"]=[6,9,6,9,9,6,6]
-    out["Cobertura de cores"]=[5,6,5,6,7,5,5]
-    out["Webcam"]=[6,9,5.5,6,9,5.5,5.5]
-    out["Wi‑Fi"]=[8,9.5,6,5.5,8.5,8.5,8.5]
-    out["Thunderbolt / USB4"]=[5,10,3,3,3,3,3]
-    out["USB‑C com vídeo"]=[8,10,8,5,9,3,3]
-    out["USB‑C com carregamento"]=[9,10,9,8,10,3,3]
-    out["Material / construção"]=[9,8,8,6,6,6,6]
-    return out.clip(0,10).round(1)
-
-if "weights" not in st.session_state: st.session_state.weights = DEFAULT_WEIGHTS.copy()
-if "scores" not in st.session_state: st.session_state.scores = initial_scores()
-
-PRESETS = {
-"Equilibrado": DEFAULT_WEIGHTS,
-"Mobilidade": {**DEFAULT_WEIGHTS, "Peso (kg)":10,"Bateria (Wh)":10,"Espessura (mm)":7,"Carregamento USB‑C":7,"Tela (pol.)":2,"Taxa de atualização (Hz)":1},
-"Trabalho / produtividade": {**DEFAULT_WEIGHTS, "RAM instalada (GB)":10,"Expansão de RAM":9,"CPU":9,"Tela (pol.)":6,"Proporção":7,"Webcam":6,"Ethernet RJ‑45":5,"Bateria (Wh)":7},
-"Desempenho": {**DEFAULT_WEIGHTS, "CPU":10,"Núcleos":7,"Threads":7,"RAM instalada (GB)":10,"Tipo RAM":6,"Velocidade RAM":7,"GPU integrada":7,"SSD instalado (GB)":6},
-"Tela e multimídia": {**DEFAULT_WEIGHTS, "Painel":10,"Resolução":9,"Brilho (nits)":9,"Cobertura de cores":10,"Taxa de atualização (Hz)":7,"Áudio / alto-falantes":5},
-"Expansão / longevidade": {**DEFAULT_WEIGHTS, "Expansão de RAM":10,"RAM máxima oficial (GB)":10,"Slots RAM livres":8,"Slots M.2 livres":9,"Armazenamento máx./observação":7,"Tipo/interface SSD":6},
+IMPORTANT_GROUPS = {
+    "Desempenho":["CPU","GPU integrada"],
+    "Memória":["RAM instalada (GB)","Tipo RAM","Dual-channel de fábrica","Expansão de RAM","RAM máxima oficial (GB)"],
+    "Armazenamento":["SSD instalado (GB)","Tipo/interface SSD","Slots M.2 livres"],
+    "Tela":["Resolução","Proporção","Painel","Taxa de atualização (Hz)","Brilho (nits)","Cobertura de cores"],
+    "Comunicação e portas":["Webcam","Wi‑Fi","Thunderbolt / USB4","USB‑C com vídeo","USB‑C com carregamento"],
+    "Mobilidade e construção":["Bateria (Wh)","Peso (kg)","Material / construção"],
 }
 
-def ranking():
-    weights=pd.Series(st.session_state.weights, dtype=float)
-    active=weights[weights>0]
+DEFAULT_WEIGHTS = {
+    "CPU":9,"GPU integrada":3,
+    "RAM instalada (GB)":9,"Tipo RAM":4,"Dual-channel de fábrica":5,"Expansão de RAM":7,"RAM máxima oficial (GB)":5,
+    "SSD instalado (GB)":5,"Tipo/interface SSD":4,"Slots M.2 livres":4,
+    "Resolução":6,"Proporção":4,"Painel":7,"Taxa de atualização (Hz)":3,"Brilho (nits)":6,"Cobertura de cores":4,
+    "Webcam":3,"Wi‑Fi":4,"Thunderbolt / USB4":4,"USB‑C com vídeo":4,"USB‑C com carregamento":5,
+    "Bateria (Wh)":8,"Peso (kg)":7,"Material / construção":4,
+}
+
+PRESETS = {
+    "Equilibrado": DEFAULT_WEIGHTS,
+    "Mobilidade": {**DEFAULT_WEIGHTS,"Bateria (Wh)":10,"Peso (kg)":10,"USB‑C com carregamento":8,"Material / construção":6,"Taxa de atualização (Hz)":1},
+    "Trabalho / produtividade": {**DEFAULT_WEIGHTS,"CPU":9,"RAM instalada (GB)":10,"Expansão de RAM":9,"Painel":8,"Proporção":7,"Webcam":6,"Bateria (Wh)":7},
+    "Desempenho": {**DEFAULT_WEIGHTS,"CPU":10,"GPU integrada":8,"RAM instalada (GB)":10,"Tipo RAM":7,"Dual-channel de fábrica":7,"SSD instalado (GB)":7},
+    "Tela e multimídia": {**DEFAULT_WEIGHTS,"Painel":10,"Resolução":9,"Brilho (nits)":9,"Cobertura de cores":10,"Taxa de atualização (Hz)":8,"GPU integrada":6},
+    "Expansão / longevidade": {**DEFAULT_WEIGHTS,"Expansão de RAM":10,"RAM máxima oficial (GB)":10,"Slots M.2 livres":9,"Tipo/interface SSD":6,"Material / construção":7},
+}
+
+CPU_SCORE = {
+    "Intel Core Ultra 5 115U":8.2,"Intel Core 5 120U":8.4,"Intel Core i7-1355U":8.5,
+    "Intel Core i5-1335U":7.7,"Intel Core i5-1334U":7.5,"Intel Core i7-10510U":5.2
+}
+GPU_SCORE = {
+    "Intel Iris Xe Graphics":7.5,"Intel Graphics":7.2,
+    "Intel UHD Graphics":5.0,"Intel UHD Graphics (ficha comercial)":5.5
+}
+NUMERIC_FIELDS = {
+    "Núcleos","P-cores","E-cores","LP E-cores","Threads","Clock base / referência (GHz)",
+    "Turbo máx. (GHz)","Cache L3 (MB)","RAM instalada (GB)","Slots RAM físicos","Slots RAM livres",
+    "RAM máxima oficial (GB)","SSD instalado (GB)","Slots M.2 totais","Slots M.2 livres","Tela (pol.)",
+    "Taxa de atualização (Hz)","Brilho (nits)","Bateria (Wh)","Carregador (W)","Largura (mm)",
+    "Profundidade (mm)","Espessura (mm)","Peso (kg)"
+}
+LOWER_BETTER = {"Peso (kg)"}
+
+def current_df():
+    rows = st.session_state.inventory
+    normalized = [{c: row.get(c, "N/D") for c in SPEC_COLUMNS} for row in rows]
+    return pd.DataFrame(normalized, columns=SPEC_COLUMNS)
+
+def numeric_scores(series, lower_is_better=False):
+    x = pd.to_numeric(series, errors="coerce")
+    if x.notna().sum() < 2 or x.max() == x.min():
+        return pd.Series([7.0 if pd.notna(v) else 5.0 for v in x], index=series.index)
+    z = (x-x.min())/(x.max()-x.min())
+    if lower_is_better:
+        z = 1-z
+    return 4.0 + z*6.0
+
+def generic_text_score(value):
+    s = str(value).strip().lower()
+    if s in {"", "n/d", "não informado", "não confirmado", "none", "nan"}:
+        return 5.0
+    if "não determin" in s or "varia " in s or "opcional" in s:
+        return 5.0
+    if s.startswith("sim") or "power delivery" in s or "displayport" in s:
+        return 8.5
+    if s == "não":
+        return 3.0
+    return 6.5
+
+def semantic_score(criterion, value):
+    s = str(value).lower()
+    if criterion == "CPU":
+        return CPU_SCORE.get(str(value), 6.0)
+    if criterion == "GPU integrada":
+        return GPU_SCORE.get(str(value), 6.0)
+    if criterion == "Tipo RAM":
+        if "lpddr5" in s or "ddr5" in s: return 9.0
+        if "lpddr4" in s: return 7.0
+        if "ddr4" in s: return 6.0
+    if criterion == "Dual-channel de fábrica":
+        return 9.0 if s.startswith("sim") else 3.0
+    if criterion == "Expansão de RAM":
+        if s.startswith("não"): return 2.0
+        if "32gb" in s or "64gb" in s: return 10.0
+        if "sim" in s: return 8.0
+        if "limit" in s: return 5.0
+    if criterion == "Tipo/interface SSD":
+        if "gen4" in s or "4.0" in s: return 9.0
+        if "nvme" in s: return 7.5
+    if criterion == "Resolução":
+        if "1920×1200" in s or "1920x1200" in s: return 9.0
+        if "1920×1080" in s or "1920x1080" in s: return 7.0
+    if criterion == "Proporção":
+        if "16:10" in s: return 9.0
+        if "16:9" in s: return 6.0
+    if criterion == "Painel":
+        if "ips" in s and "tn" not in s: return 9.0
+        if "wva" in s: return 7.5
+        if "tn" in s: return 4.5
+    if criterion == "Cobertura de cores":
+        if "100%" in s: return 10.0
+        if "62,5" in s or "62.5" in s: return 7.0
+        if "45%" in s: return 6.0
+    if criterion == "Webcam":
+        if "1080" in s or "fhd" in s: return 9.0
+        if "720" in s or "hd" in s: return 6.0
+    if criterion == "Wi‑Fi":
+        if "6e" in s or "wi-fi 7" in s or "wifi 7" in s: return 9.5
+        if "wi‑fi 6" in s or "wi-fi 6" in s or "wifi 6" in s: return 8.5
+        if "wi‑fi 5" in s or "wi-fi 5" in s or "wifi 5" in s: return 6.0
+    if criterion == "Thunderbolt / USB4":
+        if "thunderbolt 4" in s or "usb4" in s: return 10.0
+        if s == "não": return 3.0
+    if criterion in {"USB‑C com vídeo","USB‑C com carregamento"}:
+        return 9.0 if s.startswith("sim") or "displayport" in s or "power delivery" in s else 3.0
+    if criterion == "Material / construção":
+        if "metá" in s or "alum" in s: return 8.5
+        if "plástico" in s: return 6.0
+    return generic_text_score(value)
+
+def build_initial_scores(frame):
+    models = frame[MODEL_COL].astype(str).tolist()
+    out = pd.DataFrame(index=models, columns=IMPORTANT_CRITERIA, dtype=float)
+    for c in IMPORTANT_CRITERIA:
+        if c in NUMERIC_FIELDS:
+            out[c] = numeric_scores(frame[c], c in LOWER_BETTER).values
+        else:
+            out[c] = frame[c].map(lambda v: semantic_score(c, v)).values
+    return out.clip(0,10).round(1)
+
+def reconcile_scores(reset_model=None):
+    frame = current_df()
+    fresh = build_initial_scores(frame)
+    old = st.session_state.get("scores")
+    if old is not None:
+        for model in fresh.index:
+            if model == reset_model or model not in old.index:
+                continue
+            for c in IMPORTANT_CRITERIA:
+                if c in old.columns:
+                    fresh.loc[model,c] = old.loc[model,c]
+    st.session_state.scores = fresh
+
+def parse_value(col, value):
+    value = value.strip()
+    if value == "":
+        return "N/D"
+    if col in NUMERIC_FIELDS:
+        try:
+            number = float(value.replace(",", "."))
+            return int(number) if number.is_integer() else number
+        except ValueError:
+            return value
+    return value
+
+if "inventory" not in st.session_state:
+    st.session_state.inventory = [dict(x) for x in NOTEBOOKS]
+if "weights" not in st.session_state:
+    st.session_state.weights = DEFAULT_WEIGHTS.copy()
+if "scores" not in st.session_state:
+    st.session_state.scores = build_initial_scores(current_df())
+
+def models():
+    return current_df()[MODEL_COL].astype(str).tolist()
+
+def ranking(selected_models=None):
+    frame = current_df()
+    available = frame[MODEL_COL].astype(str).tolist()
+    score_df = st.session_state.scores.reindex(available)
+    weights = pd.Series(st.session_state.weights, dtype=float)
+    active = weights[weights > 0]
     if active.empty:
-        total=pd.Series(0.0,index=MODELS)
+        total = pd.Series(0.0, index=available)
     else:
-        total=st.session_state.scores[active.index].mul(active,axis=1).sum(axis=1)/active.sum()
-    result=pd.DataFrame({"Notebook":MODELS,"Pontuação":total.values})
-    result["Nota / 100"]=(result["Pontuação"]*10).round(1)
+        total = score_df[active.index].mul(active, axis=1).sum(axis=1)/active.sum()
+    result = pd.DataFrame({"Notebook":available,"Pontuação":total.values})
+    result["Nota / 100"] = (result["Pontuação"]*10).round(1)
+    if selected_models is not None:
+        result = result[result["Notebook"].isin(selected_models)]
     return result.sort_values("Pontuação",ascending=False).reset_index(drop=True)
 
+def notebook_summary(row):
+    known = {
+        "Galaxy Book4 15,6” — i5-1335U / 8GB / 512GB": SUMMARY["Samsung Galaxy Book4"],
+        "Aspire 16 A16-71M-55H0 — Ultra 5 115U / 16GB / 512GB": SUMMARY["Acer Aspire 16"],
+        "ThinkPad E14 (Gen 1) — i7-10510U / 8GB / 512GB": SUMMARY["Lenovo ThinkPad E14"],
+        "Vivobook 16 X1605VA-MB763W — i7-1355U / 16GB / 512GB": SUMMARY["ASUS Vivobook 16"],
+        "200 G2i 16” — Core 5 120U / 8GB / 512GB": SUMMARY["HP 200 G2i"],
+        "Dell 15 DC15-I51334U-A50 — i5-1334U / 8GB / 512GB": SUMMARY["Dell A50"],
+        "Dell 15 DC15-I51334U-M80 — i5-1334U / 16GB / 1TB": SUMMARY["Dell M80"],
+    }
+    name = str(row.get(MODEL_COL,""))
+    if name in known:
+        return known[name]
+    hi = str(row.get("Destaques objetivos","")).strip()
+    lo = str(row.get("Limitações / ressalvas","")).strip()
+    if hi not in {"","N/D"} and lo not in {"","N/D"}:
+        return f"{hi}. Atenção: {lo}"
+    return hi if hi not in {"","N/D"} else "Sem resumo cadastrado."
+
+# ---------------------------------------------------------------------
+# Interface
+# ---------------------------------------------------------------------
 st.title("Nota da Lu")
-st.caption("Comparador interativo de notebooks • pesos, notas e especificações manipuláveis")
+st.caption("Compare notebooks do seu jeito: especificações, pesos, notas e ranking personalizado.")
+
+all_models = models()
 
 with st.sidebar:
     st.subheader("Perfil de compra")
-    preset=st.selectbox("Preset de pesos", list(PRESETS))
+    preset = st.selectbox("Preset de pesos", list(PRESETS))
     if st.button("Aplicar preset", use_container_width=True):
-        st.session_state.weights=PRESETS[preset].copy()
+        st.session_state.weights = PRESETS[preset].copy()
         st.rerun()
-    if st.button("Restaurar tudo", use_container_width=True):
-        st.session_state.weights=DEFAULT_WEIGHTS.copy()
-        st.session_state.scores=initial_scores()
+    if st.button("Restaurar pesos e notas", use_container_width=True):
+        st.session_state.weights = DEFAULT_WEIGHTS.copy()
+        st.session_state.scores = build_initial_scores(current_df())
         st.rerun()
     st.divider()
-    selected=st.multiselect("Notebooks visíveis", MODELS, default=MODELS)
-    st.caption("Pesos 0 = critério fora do ranking. Notas vão de 0 a 10.")
+    selected = st.multiselect("Itens considerados", all_models, default=all_models)
+    st.caption(f"{len(st.session_state.inventory)} notebook(s) cadastrado(s).")
 
-tabs=st.tabs(["🏆 Ranking","⚖️ Pesos","🎚️ Notas","🧾 Ficha completa","📝 Resumo"])
+tabs = st.tabs([
+    "🏠 Início","🏆 Ranking","⚖️ Pesos","🎚️ Notas",
+    "↔️ Comparativo lado a lado","🗂️ Itens cadastrados","📝 Resumo"
+])
 
 with tabs[0]:
-    rank=ranking()
-    rank=rank[rank["Notebook"].isin(selected)]
-    if len(rank):
-        winner=rank.iloc[0]
-        c1,c2,c3,c4=st.columns(4)
-        c1.metric("1º no seu perfil", winner["Notebook"].split(" — ")[0])
-        c2.metric("Nota", f'{winner["Nota / 100"]:.1f}/100')
-        c3.metric("Critérios ativos", sum(v>0 for v in st.session_state.weights.values()))
-        c4.metric("Modelos comparados", len(rank))
-        fig=px.bar(rank.sort_values("Pontuação"),x="Nota / 100",y="Notebook",orientation="h",text="Nota / 100",range_x=[0,100])
-        fig.update_layout(height=430,margin=dict(l=10,r=20,t=20,b=10),xaxis_title="Pontuação ponderada",yaxis_title="")
-        st.plotly_chart(fig,use_container_width=True)
-        st.dataframe(rank[["Notebook","Nota / 100"]],hide_index=True,use_container_width=True)
-        st.download_button("Baixar ranking em CSV", rank.to_csv(index=False).encode("utf-8-sig"),"ranking_notebooks.csv","text/csv")
-        st.info("A pontuação é uma média ponderada das notas que você controla. Ela não pretende substituir preço, preferência pessoal ou inspeção do anúncio.")
+    st.subheader("O que você quer fazer?")
+    st.write("Use o sistema na ordem que fizer sentido. Você pode simplesmente comparar as fichas ou construir um ranking totalmente personalizado.")
+    home_cards = [
+        ("↔️ Comparar lado a lado","Coloque até 10 notebooks na mesma tabela, filtre por grupo de especificações e mostre apenas aquilo que é diferente entre eles."),
+        ("⚖️ Definir o que importa","Ajuste os pesos dos critérios realmente relevantes para você. Um peso 0 tira o critério do cálculo."),
+        ("🎚️ Revisar as notas","Veja a especificação original e a nota atribuída a ela. Se discordar da avaliação inicial, altere livremente."),
+        ("🏆 Ver o ranking","Combine seus pesos e suas notas em uma pontuação ponderada de 0 a 100 para os equipamentos selecionados."),
+        ("🗂️ Gerenciar equipamentos","Cadastre, edite ou remova notebooks. Todos os campos da ficha técnica continuam disponíveis."),
+        ("📝 Ler o resumo","Veja rapidamente os principais pontos fortes e ressalvas de cada equipamento cadastrado."),
+    ]
+    c1,c2 = st.columns(2)
+    for i,(title,body) in enumerate(home_cards):
+        with (c1 if i % 2 == 0 else c2):
+            with st.container(border=True):
+                st.markdown(f"### {title}")
+                st.write(body)
+    st.divider()
+    a,b,c = st.columns(3)
+    a.metric("Equipamentos", len(all_models))
+    b.metric("Specs por item", len(SPEC_COLUMNS))
+    c.metric("Critérios pontuados", len(IMPORTANT_CRITERIA))
+    st.info("Dica: para uma primeira comparação, abra **Comparativo lado a lado**. Só depois vale a pena mexer em pesos e notas.")
 
 with tabs[1]:
-    st.subheader("Peso de cada critério")
-    st.caption("0 ignora o critério; 10 dá importância máxima. Todos os critérios da planilha aparecem aqui, inclusive os descritivos.")
-    group=st.selectbox("Filtrar grupo",["Todos"]+list(GROUPS))
-    visible=ALL_CRITERIA if group=="Todos" else GROUPS[group]
-    weight_df=pd.DataFrame({"Critério":visible,"Peso":[st.session_state.weights[c] for c in visible]})
-    edited=st.data_editor(weight_df,hide_index=True,use_container_width=True,
-        column_config={"Peso":st.column_config.NumberColumn(min_value=0,max_value=10,step=1,format="%d")},
-        disabled=["Critério"],key=f"weight_editor_{group}")
-    if st.button("Aplicar pesos editados"):
-        for _,r in edited.iterrows(): st.session_state.weights[r["Critério"]]=float(r["Peso"])
-        st.rerun()
+    st.subheader("Ranking personalizado")
+    rank = ranking(selected)
+    if rank.empty:
+        st.warning("Selecione pelo menos um item na barra lateral.")
+    else:
+        winner = rank.iloc[0]
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric("Maior pontuação", winner["Notebook"].split(" — ")[0])
+        c2.metric("Nota", f'{winner["Nota / 100"]:.1f}/100')
+        c3.metric("Critérios ativos", sum(v > 0 for v in st.session_state.weights.values()))
+        c4.metric("Itens comparados", len(rank))
+        fig = px.bar(rank.sort_values("Pontuação"),x="Nota / 100",y="Notebook",orientation="h",text="Nota / 100",range_x=[0,100])
+        fig.update_layout(height=max(360, 58*len(rank)),margin=dict(l=10,r=20,t=20,b=10),xaxis_title="Pontuação ponderada",yaxis_title="")
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(rank[["Notebook","Nota / 100"]],hide_index=True,use_container_width=True)
+        st.download_button("Baixar ranking em CSV",rank.to_csv(index=False).encode("utf-8-sig"),"ranking_notebooks.csv","text/csv")
+        st.caption("A pontuação é uma média ponderada das notas configuradas. Ela serve para organizar preferências, não como avaliação absoluta do produto.")
 
 with tabs[2]:
-    st.subheader("Nota de cada característica")
-    st.caption("As notas iniciais são uma heurística para dar um ponto de partida. Você pode sobrescrever qualquer célula.")
-    group2=st.selectbox("Grupo de critérios",list(GROUPS),key="score_group")
-    score_cols=[c for c in GROUPS[group2] if c not in ["Marca","Modelo / configuração","Link do anúncio","Fonte técnica principal","Fonte complementar"]]
-    score_edit=st.session_state.scores[score_cols].copy()
-    score_edit.insert(0,"Notebook",score_edit.index)
-    score_edit=score_edit[score_edit["Notebook"].isin(selected)]
-    edited_scores=st.data_editor(score_edit,hide_index=True,use_container_width=True,
-        column_config={c:st.column_config.NumberColumn(min_value=0.0,max_value=10.0,step=.1,format="%.1f") for c in score_cols},
-        disabled=["Notebook"],key=f"score_editor_{group2}")
-    if st.button("Aplicar notas editadas"):
-        for _,r in edited_scores.iterrows():
-            m=r["Notebook"]
-            for c in score_cols: st.session_state.scores.loc[m,c]=float(r[c])
+    st.subheader("Pesos dos critérios")
+    st.caption("Aqui ficam apenas os critérios mais relevantes para a decisão. 0 = ignorar; 10 = importância máxima.")
+    group = st.selectbox("Grupo", ["Todos"]+list(IMPORTANT_GROUPS), key="weight_group")
+    weight_cols = IMPORTANT_CRITERIA if group == "Todos" else IMPORTANT_GROUPS[group]
+    weight_df = pd.DataFrame({
+        "Critério":weight_cols,
+        "Peso":[st.session_state.weights[c] for c in weight_cols]
+    })
+    edited = st.data_editor(
+        weight_df,hide_index=True,use_container_width=True,
+        column_config={"Peso":st.column_config.NumberColumn(min_value=0,max_value=10,step=1,format="%d")},
+        disabled=["Critério"],key=f"weight_editor_{group}"
+    )
+    if st.button("Aplicar pesos", type="primary"):
+        for _,r in edited.iterrows():
+            st.session_state.weights[r["Critério"]] = float(r["Peso"])
         st.rerun()
 
 with tabs[3]:
-    st.subheader("Ficha técnica completa")
-    compare=st.multiselect("Escolha até 4 para comparar lado a lado", MODELS, default=MODELS[:3], max_selections=4)
-    full=df[df[MODEL_COL].isin(compare)].set_index(MODEL_COL).T
-    group3=st.selectbox("Mostrar grupo",["Todos"]+list(GROUPS),key="spec_group")
-    if group3!="Todos":
-        wanted=[c for c in GROUPS[group3] if c!=MODEL_COL]
-        full=full.loc[[c for c in wanted if c in full.index]]
-    st.dataframe(full,use_container_width=True,height=700)
-    st.download_button("Baixar specs em CSV",df.to_csv(index=False).encode("utf-8-sig"),"notebooks_specs.csv","text/csv")
+    st.subheader("Notas das características")
+    st.caption("A especificação real aparece ao lado da nota. Assim fica claro exatamente o que está sendo avaliado.")
+    score_group = st.selectbox("Grupo", list(IMPORTANT_GROUPS), key="score_group")
+    criterion = st.selectbox("Critério", IMPORTANT_GROUPS[score_group], key="score_criterion")
+    frame = current_df().set_index(MODEL_COL)
+    rows = []
+    for model in selected:
+        if model not in frame.index:
+            continue
+        rows.append({
+            "Notebook": model,
+            "Spec": frame.loc[model, criterion],
+            "Nota": float(st.session_state.scores.loc[model, criterion])
+        })
+    score_edit = pd.DataFrame(rows)
+    if score_edit.empty:
+        st.warning("Selecione pelo menos um item na barra lateral.")
+    else:
+        edited_scores = st.data_editor(
+            score_edit,hide_index=True,use_container_width=True,
+            column_config={
+                "Spec":st.column_config.TextColumn(width="large"),
+                "Nota":st.column_config.NumberColumn(min_value=0.0,max_value=10.0,step=.1,format="%.1f")
+            },
+            disabled=["Notebook","Spec"],key=f"score_editor_{criterion}"
+        )
+        if st.button("Aplicar notas", type="primary"):
+            for _,r in edited_scores.iterrows():
+                st.session_state.scores.loc[r["Notebook"],criterion] = float(r["Nota"])
+            st.rerun()
+        st.divider()
+        detail = pd.DataFrame({
+            "Critério":IMPORTANT_GROUPS[score_group],
+            "Peso atual":[st.session_state.weights[c] for c in IMPORTANT_GROUPS[score_group]]
+        })
+        st.dataframe(detail,hide_index=True,use_container_width=True)
 
 with tabs[4]:
-    st.subheader("Resumo executivo")
-    cards=[
-        ("Samsung Galaxy Book4",SUMMARY["Samsung Galaxy Book4"]),
-        ("Acer Aspire 16",SUMMARY["Acer Aspire 16"]),
-        ("Lenovo ThinkPad E14",SUMMARY["Lenovo ThinkPad E14"]),
-        ("ASUS Vivobook 16",SUMMARY["ASUS Vivobook 16"]),
-        ("HP 200 G2i",SUMMARY["HP 200 G2i"]),
-        ("Dell A50",SUMMARY["Dell A50"]),
-        ("Dell M80",SUMMARY["Dell M80"]),
-    ]
-    for title,body in cards:
+    st.subheader("Comparativo lado a lado")
+    compare = st.multiselect(
+        "Escolha até 10 itens",
+        all_models,
+        default=all_models[:min(4,len(all_models))],
+        max_selections=10,
+        key="compare_models"
+    )
+    group3 = st.selectbox("Grupo de especificações",["Todos"]+list(GROUPS),key="spec_group")
+    only_diff = st.toggle("Mostrar apenas especificações diferentes", value=False)
+    if compare:
+        frame = current_df()
+        full = frame[frame[MODEL_COL].isin(compare)].set_index(MODEL_COL).T
+        if group3 != "Todos":
+            wanted = [c for c in GROUPS[group3] if c != MODEL_COL]
+            full = full.loc[[c for c in wanted if c in full.index]]
+        if only_diff and len(compare) > 1:
+            normalized = full.astype(str).apply(lambda col: col.str.strip())
+            full = full[normalized.nunique(axis=1, dropna=False) > 1]
+        if full.empty:
+            st.success("Nos campos exibidos, os itens selecionados não apresentam diferenças.")
+        else:
+            st.dataframe(full,use_container_width=True,height=720)
+        st.download_button(
+            "Baixar comparação em CSV",
+            full.to_csv().encode("utf-8-sig"),
+            "comparativo_lado_a_lado.csv",
+            "text/csv"
+        )
+    else:
+        st.info("Escolha pelo menos um item.")
+
+with tabs[5]:
+    st.subheader("Gestão de itens cadastrados")
+    manage_tabs = st.tabs(["Cadastrados","Adicionar / editar","Importar / exportar"])
+
+    with manage_tabs[0]:
+        frame = current_df()
+        overview_cols = ["Marca",MODEL_COL,"CPU","RAM instalada (GB)","SSD instalado (GB)","Tela (pol.)","Peso (kg)"]
+        st.dataframe(frame[overview_cols],hide_index=True,use_container_width=True)
+        st.markdown("#### Remover item")
+        remove_item = st.selectbox("Item",["— selecione —"]+all_models,key="remove_item")
+        confirm = st.checkbox("Confirmo a remoção do item selecionado.",key="confirm_remove")
+        if st.button("Remover",disabled=remove_item=="— selecione —" or not confirm):
+            st.session_state.inventory = [r for r in st.session_state.inventory if str(r.get(MODEL_COL)) != remove_item]
+            reconcile_scores()
+            st.success("Item removido.")
+            st.rerun()
+
+    with manage_tabs[1]:
+        edit_choice = st.selectbox("O que deseja editar?",["➕ Novo item"]+all_models,key="edit_choice")
+        existing = None
+        if edit_choice != "➕ Novo item":
+            existing = next((r for r in st.session_state.inventory if str(r.get(MODEL_COL)) == edit_choice), None)
+        base = existing or {c:"" for c in SPEC_COLUMNS}
+
+        st.caption("Os campos estão agrupados para facilitar o preenchimento. Deixe vazio quando a informação realmente não estiver disponível.")
+        with st.form("item_form"):
+            values = {}
+            for group_name, cols in GROUPS.items():
+                with st.expander(group_name, expanded=group_name=="Identificação"):
+                    for col in cols:
+                        default = base.get(col,"")
+                        values[col] = st.text_input(col,value="" if str(default)=="N/D" and existing is None else str(default),key=f"field_{edit_choice}_{col}")
+            save = st.form_submit_button("Salvar item",type="primary",use_container_width=True)
+
+        if save:
+            parsed = {c:parse_value(c, values.get(c,"")) for c in SPEC_COLUMNS}
+            new_name = str(parsed.get(MODEL_COL,"")).strip()
+            if new_name in {"","N/D"}:
+                st.error("Preencha **Modelo / configuração**.")
+            else:
+                duplicate = any(str(r.get(MODEL_COL)) == new_name for r in st.session_state.inventory if r is not existing)
+                if duplicate:
+                    st.error("Já existe um item com esse mesmo nome/modelo.")
+                else:
+                    old_name = str(existing.get(MODEL_COL)) if existing else None
+                    if existing:
+                        idx = st.session_state.inventory.index(existing)
+                        st.session_state.inventory[idx] = parsed
+                    else:
+                        st.session_state.inventory.append(parsed)
+                    # Recalcula apenas o item alterado; notas dos demais são preservadas.
+                    if old_name and old_name != new_name and old_name in st.session_state.scores.index:
+                        st.session_state.scores = st.session_state.scores.drop(index=old_name)
+                    reconcile_scores(reset_model=new_name)
+                    st.success("Item salvo. As notas automáticas desse item foram recalculadas a partir das specs.")
+                    st.rerun()
+
+    with manage_tabs[2]:
+        export_json = json.dumps(st.session_state.inventory,ensure_ascii=False,indent=2)
+        st.download_button(
+            "Baixar backup JSON",
+            export_json.encode("utf-8"),
+            "notebooks_backup.json",
+            "application/json",
+            use_container_width=True
+        )
+        uploaded = st.file_uploader("Importar backup JSON",type=["json"])
+        if uploaded is not None:
+            try:
+                imported = json.load(uploaded)
+                if not isinstance(imported,list):
+                    raise ValueError("O JSON precisa conter uma lista de itens.")
+                normalized = []
+                for item in imported:
+                    if not isinstance(item,dict):
+                        raise ValueError("Cada item precisa ser um objeto JSON.")
+                    normalized.append({c:item.get(c,"N/D") for c in SPEC_COLUMNS})
+                if st.button("Substituir cadastro pelo arquivo importado",type="primary"):
+                    st.session_state.inventory = normalized
+                    st.session_state.scores = build_initial_scores(current_df())
+                    st.success("Cadastro importado.")
+                    st.rerun()
+            except Exception as exc:
+                st.error(f"Não foi possível ler o arquivo: {exc}")
+        st.warning("Cadastros feitos pela interface ficam na sessão atual. Use o backup JSON para preservá-los entre reinicializações/redeploys do Railway.")
+
+with tabs[6]:
+    st.subheader("Resumo dos equipamentos")
+    frame = current_df()
+    for _,row in frame.iterrows():
         with st.container(border=True):
-            st.markdown(f"### {title}")
-            st.write(body)
+            st.markdown(f"### {row[MODEL_COL]}")
+            st.write(notebook_summary(row))
+            cols = st.columns(4)
+            cols[0].metric("RAM", f'{row["RAM instalada (GB)"]} GB')
+            cols[1].metric("SSD", f'{row["SSD instalado (GB)"]} GB')
+            cols[2].metric("Bateria", f'{row["Bateria (Wh)"]} Wh')
+            cols[3].metric("Peso", f'{row["Peso (kg)"]} kg')
     st.divider()
     st.markdown("**Notas metodológicas**")
-    st.write("• N/D significa dado não confirmado com segurança. • No ThinkPad E14, a ausência do MTM/submodelo completo impede cravar painel, WLAN, GPU dedicada e biometria. • Preços não entram no ranking porque variam rapidamente; podem ser adicionados depois como critério.")
+    st.write("N/D significa dado não confirmado com segurança. Specs incertas continuam explícitas, em vez de serem tratadas como fatos. Preços não fazem parte da base porque variam rapidamente por vendedor e data.")
