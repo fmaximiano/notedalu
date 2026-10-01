@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-st.set_page_config(page_title="Nota da Lu • Comparador de Notebooks", page_icon="💻", layout="wide")
+st.set_page_config(page_title="Note da Lu • Comparador de Notebooks", page_icon="💻", layout="wide")
 
 st.markdown("""
 <style>
@@ -83,7 +83,7 @@ IMPORTANT_CRITERIA = [
 ]
 
 IMPORTANT_GROUPS = {
-    "Preço e valor":["Preço atual (R$)"],
+    "Preço":["Preço atual (R$)"],
     "Desempenho":["CPU","GPU"],
     "Memória":["RAM instalada (GB)","Tipo RAM","Dual-channel de fábrica","Expansão de RAM","RAM máxima oficial (GB)"],
     "Armazenamento":["SSD instalado (GB)","Tipo/interface SSD","Slots M.2 livres"],
@@ -391,11 +391,19 @@ p, label, div {letter-spacing:-0.005em;}
 
 /* Sidebar */
 [data-testid="stSidebar"] {border-right:1px solid rgba(128,128,128,.14);}
-[data-testid="stSidebar"] [role="radiogroup"] label {
-  border-radius:10px; padding:.25rem .45rem; margin-bottom:.1rem;
+[data-testid="stSidebar"] .stButton > button {
+  justify-content:flex-start;
+  text-align:left;
+  margin-bottom:.18rem;
 }
-[data-testid="stSidebar"] [role="radiogroup"] label:hover {
-  background:rgba(49,87,213,.07);
+.edit-hint {
+  border:1px solid rgba(49,87,213,.22);
+  background:rgba(49,87,213,.055);
+  border-radius:12px;
+  padding:10px 13px;
+  margin:.5rem 0 .9rem 0;
+  color:#46536a;
+  font-size:.9rem;
 }
 
 /* Containers / cards */
@@ -440,20 +448,24 @@ button[data-baseweb="tab"] {font-weight:600;}
 </style>
 """,unsafe_allow_html=True)
 
-st.title("Nota da Lu")
+st.title("Note da Lu")
 st.caption("Compare notebooks com critérios explícitos, requisitos mínimos e um ranking que você controla.")
 
 all_models=models()
 
 with st.sidebar:
-    nav_options=list(PAGES.keys())
-    page=st.radio(
-        "Navegação",
-        nav_options,
-        index=nav_options.index(query_page),
-        format_func=lambda p:f"{PAGE_ICONS[p]}  {PAGES[p]}",
-        label_visibility="collapsed"
-    )
+    page=query_page
+    st.markdown('<div class="eyebrow">Navegação</div>',unsafe_allow_html=True)
+    for nav_page in PAGES:
+        is_active = nav_page == page
+        if st.button(
+            f"{PAGE_ICONS[nav_page]}  {PAGES[nav_page]}",
+            key=f"nav_{nav_page}",
+            use_container_width=True,
+            type="primary" if is_active else "secondary"
+        ):
+            st.query_params["page"]=nav_page
+            st.rerun()
     st.divider()
     st.subheader("Perfil de compra")
     available_presets={**PRESETS, **st.session_state.custom_presets}
@@ -531,12 +543,13 @@ elif page=="pesos":
     st.caption("0 ignora um critério; 10 dá importância máxima. Requisitos obrigatórios devem ser configurados na barra lateral, não como peso.")
     group=st.selectbox("Grupo",["Todos"]+list(IMPORTANT_GROUPS),key="weight_group")
     weight_cols=IMPORTANT_CRITERIA if group=="Todos" else IMPORTANT_GROUPS[group]
-    weight_df=pd.DataFrame({"Critério":weight_cols,"Peso":[st.session_state.weights[c] for c in weight_cols]})
+    st.markdown('<div class="edit-hint">✏️ <b>Campo editável:</b> clique na célula da coluna <b>Peso ✏️</b> para alterar o valor de 0 a 10.</div>',unsafe_allow_html=True)
+    weight_df=pd.DataFrame({"Critério":weight_cols,"Peso ✏️":[st.session_state.weights[c] for c in weight_cols]})
     edited=st.data_editor(weight_df,hide_index=True,use_container_width=True,
-        column_config={"Peso":st.column_config.NumberColumn(min_value=0,max_value=10,step=1,format="%d")},
+        column_config={"Peso ✏️":st.column_config.NumberColumn("Peso ✏️",min_value=0,max_value=10,step=1,format="%d",help="Clique na célula para editar o peso.")},
         disabled=["Critério"],key=f"weight_editor_{group}")
     if st.button("Aplicar pesos",type="primary"):
-        for _,r in edited.iterrows(): st.session_state.weights[r["Critério"]]=float(r["Peso"])
+        for _,r in edited.iterrows(): st.session_state.weights[r["Critério"]]=float(r["Peso ✏️"])
         st.rerun()
 
     st.divider()
@@ -574,22 +587,37 @@ elif page=="pesos":
 elif page=="notas":
     st.subheader("Notas das características")
     st.caption("A nota sempre aparece junto da especificação real que está sendo avaliada.")
-    score_group=st.selectbox("Grupo",list(IMPORTANT_GROUPS),key="score_group")
-    criterion=st.selectbox("Critério",IMPORTANT_GROUPS[score_group],key="score_criterion")
+    score_group=st.selectbox("Grupo",["Todos"]+list(IMPORTANT_GROUPS),key="score_group")
+    criterion_options=IMPORTANT_CRITERIA if score_group=="Todos" else IMPORTANT_GROUPS[score_group]
+    criterion=st.selectbox("Critério",criterion_options,key="score_criterion")
     frame=current_df().set_index(MODEL_COL)
     rows=[]
     for model in selected:
         if model in frame.index:
-            rows.append({"Notebook":model,"Spec":frame.loc[model,criterion],"Nota":float(st.session_state.scores.loc[model,criterion])})
+            rows.append({
+                "Notebook":model,
+                criterion:frame.loc[model,criterion],
+                "Nota ✏️":float(st.session_state.scores.loc[model,criterion])
+            })
     score_edit=pd.DataFrame(rows)
     if score_edit.empty:
         st.warning("Selecione pelo menos um item na barra lateral.")
     else:
-        edited_scores=st.data_editor(score_edit,hide_index=True,use_container_width=True,
-            column_config={"Spec":st.column_config.TextColumn(width="large"),"Nota":st.column_config.NumberColumn(min_value=0.0,max_value=10.0,step=.1,format="%.1f")},
-            disabled=["Notebook","Spec"],key=f"score_editor_{criterion}")
+        st.markdown('<div class="edit-hint">✏️ <b>Campo editável:</b> a especificação é apenas para consulta. Clique na célula da coluna <b>Nota ✏️</b> para atribuir uma nota de 0 a 10.</div>',unsafe_allow_html=True)
+        edited_scores=st.data_editor(
+            score_edit,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                criterion:st.column_config.TextColumn(criterion,width="large"),
+                "Nota ✏️":st.column_config.NumberColumn("Nota ✏️",min_value=0.0,max_value=10.0,step=.1,format="%.1f",help="Clique na célula para editar a nota.")
+            },
+            disabled=["Notebook",criterion],
+            key=f"score_editor_{score_group}_{criterion}"
+        )
         if st.button("Aplicar notas",type="primary"):
-            for _,r in edited_scores.iterrows(): st.session_state.scores.loc[r["Notebook"],criterion]=float(r["Nota"])
+            for _,r in edited_scores.iterrows():
+                st.session_state.scores.loc[r["Notebook"],criterion]=float(r["Nota ✏️"])
             st.rerun()
         st.caption("Notas automáticas são apenas um ponto de partida. Para CPUs/GPUs novas ou incomuns, revise a nota manualmente.")
 
