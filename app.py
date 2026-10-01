@@ -292,6 +292,8 @@ if "scores" not in st.session_state:
     st.session_state.scores = build_initial_scores(current_df())
 if "requirements" not in st.session_state:
     st.session_state.requirements = {"max_price":0.0,"min_ram":0,"min_ssd":0,"max_weight":0.0,"usb_c_charge":False}
+if "custom_presets" not in st.session_state:
+    st.session_state.custom_presets = {}
 
 def models():
     return current_df()[MODEL_COL].astype(str).tolist()
@@ -378,16 +380,63 @@ if query_page not in PAGES: query_page="inicio"
 
 st.markdown("""
 <style>
+/* Base */
+.block-container {max-width: 1440px; padding-top: 1.3rem; padding-bottom: 3rem;}
 [data-testid="stHeaderActionElements"] {display:none !important;}
 h1 a, h2 a, h3 a, h4 a {display:none !important;}
-.nav-card {
-  display:block; text-decoration:none !important; color:inherit !important;
-  border:1px solid #e7e9ef; border-radius:16px; padding:18px 20px; min-height:145px;
-  background:#fff; transition:all .15s ease; margin-bottom:14px;
+h1 {font-size:2.05rem !important; margin-bottom:.15rem !important;}
+h2 {font-size:1.45rem !important; margin-top:.7rem !important;}
+h3 {font-size:1.05rem !important;}
+p, label, div {letter-spacing:-0.005em;}
+
+/* Sidebar */
+[data-testid="stSidebar"] {border-right:1px solid rgba(128,128,128,.14);}
+[data-testid="stSidebar"] [role="radiogroup"] label {
+  border-radius:10px; padding:.25rem .45rem; margin-bottom:.1rem;
 }
-.nav-card:hover {border-color:#3157D5; box-shadow:0 5px 18px rgba(31,45,80,.10); transform:translateY(-1px);}
-.nav-card .nav-title {font-size:1.08rem; font-weight:700; margin-bottom:8px; color:#172033;}
-.nav-card .nav-body {font-size:.94rem; line-height:1.45; color:#667085;}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {
+  background:rgba(49,87,213,.07);
+}
+
+/* Containers / cards */
+[data-testid="stVerticalBlockBorderWrapper"] {
+  border-radius:16px !important;
+  border-color:rgba(120,130,150,.22) !important;
+  box-shadow:0 1px 2px rgba(15,23,42,.025);
+}
+.feature-card {
+  min-height:88px;
+}
+.muted {color:#697386; font-size:.93rem; line-height:1.45;}
+.eyebrow {font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; font-weight:700; color:#667085;}
+.section-lead {font-size:1.02rem; color:#667085; max-width:860px; margin-bottom:1rem;}
+
+/* Metrics */
+[data-testid="stMetric"] {
+  background:rgba(128,128,128,.045);
+  border:1px solid rgba(120,130,150,.16);
+  padding:14px 16px;
+  border-radius:14px;
+}
+[data-testid="stMetricLabel"] {font-weight:600; color:#667085;}
+
+/* Buttons */
+.stButton > button, .stDownloadButton > button {
+  border-radius:10px;
+  min-height:2.55rem;
+  font-weight:600;
+}
+.stButton > button[kind="primary"] {box-shadow:0 2px 8px rgba(49,87,213,.18);}
+
+/* Dataframes */
+[data-testid="stDataFrame"] {
+  border:1px solid rgba(120,130,150,.18);
+  border-radius:12px;
+  overflow:hidden;
+}
+
+/* Tabs */
+button[data-baseweb="tab"] {font-weight:600;}
 </style>
 """,unsafe_allow_html=True)
 
@@ -407,9 +456,10 @@ with st.sidebar:
     )
     st.divider()
     st.subheader("Perfil de compra")
-    preset=st.selectbox("Preset de pesos",list(PRESETS))
+    available_presets={**PRESETS, **st.session_state.custom_presets}
+    preset=st.selectbox("Preset de pesos",list(available_presets))
     if st.button("Aplicar preset",use_container_width=True):
-        st.session_state.weights=PRESETS[preset].copy()
+        st.session_state.weights=available_presets[preset].copy()
         st.rerun()
     st.divider()
     selected=st.multiselect("Itens considerados",all_models,default=all_models)
@@ -429,22 +479,24 @@ with st.sidebar:
 # ---------------------------------------------------------------------
 if page=="inicio":
     st.subheader("Escolha como quer começar")
-    st.write("A ferramenta separa três coisas que costumam ser misturadas: **o que o notebook tem**, **o quanto isso importa para você** e **quanto aquela configuração merece de nota**.")
+    st.markdown('<div class="section-lead">A ferramenta separa três coisas que costumam ser misturadas: <b>o que o notebook tem</b>, <b>o quanto isso importa para você</b> e <b>quanto aquela configuração merece de nota</b>.</div>',unsafe_allow_html=True)
     cards=[
-        ("comparativo","↔️ Comparar lado a lado","Veja até 10 equipamentos juntos, filtre por grupo e esconda tudo que for igual."),
-        ("pesos","⚖️ Definir o que importa","Diga quais critérios têm peso real na sua compra. Preço já entra como critério opcional."),
-        ("notas","🎚️ Revisar as notas","Confira a spec original que gerou cada nota e ajuste qualquer avaliação com a qual não concorde."),
-        ("ranking","🏆 Ver o ranking","Veja a pontuação ponderada, requisitos mínimos e a cobertura dos dados de cada opção."),
-        ("itens","🗂️ Gerenciar equipamentos","Cadastre, edite ou remova modelos e preencha todas as especificações."),
-        ("resumo","📝 Ler o resumo","Faça uma leitura rápida dos principais pontos fortes, limitações e dados essenciais."),
+        ("comparativo","↔️","Comparar lado a lado","Veja até 10 equipamentos juntos, filtre por grupo e esconda tudo que for igual."),
+        ("pesos","⚖️","Definir o que importa","Diga quais critérios têm peso real na sua compra. Preço pode entrar no cálculo de valor."),
+        ("notas","🎚️","Revisar as notas","Confira a spec que originou cada nota e ajuste qualquer avaliação com a qual não concorde."),
+        ("ranking","🏆","Ver o ranking","Veja pontuação ponderada, requisitos mínimos e cobertura dos dados de cada opção."),
+        ("itens","🗂️","Gerenciar equipamentos","Cadastre, edite ou remova modelos e preencha todas as especificações."),
+        ("resumo","📝","Ler o resumo","Faça uma leitura rápida dos principais pontos fortes, limitações e dados essenciais."),
     ]
-    cols=st.columns(2)
-    for i,(slug,title,body) in enumerate(cards):
+    cols=st.columns(2,gap="medium")
+    for i,(slug,icon,title,body) in enumerate(cards):
         with cols[i%2]:
-            st.markdown(
-                f'<a class="nav-card" href="?page={slug}"><div class="nav-title">{title}</div><div class="nav-body">{body}</div></a>',
-                unsafe_allow_html=True
-            )
+            with st.container(border=True):
+                st.markdown(f"### {icon} {title}")
+                st.markdown(f'<div class="muted">{body}</div>',unsafe_allow_html=True)
+                if st.button("Abrir",key=f"home_{slug}",use_container_width=True):
+                    st.query_params["page"]=slug
+                    st.rerun()
     a,b,c,d=st.columns(4)
     a.metric("Equipamentos",len(all_models))
     b.metric("Specs por item",len(SPEC_COLUMNS))
@@ -486,6 +538,38 @@ elif page=="pesos":
     if st.button("Aplicar pesos",type="primary"):
         for _,r in edited.iterrows(): st.session_state.weights[r["Critério"]]=float(r["Peso"])
         st.rerun()
+
+    st.divider()
+    st.markdown("### Presets personalizados")
+    st.caption("Aplique um preset-base, ajuste os pesos acima e salve a combinação com outro nome.")
+    p1,p2=st.columns([2,1])
+    with p1:
+        preset_name=st.text_input("Nome do novo preset",placeholder="Ex.: Trabalho remoto da Lu")
+    with p2:
+        st.write("")
+        st.write("")
+        save_preset=st.button("Salvar preset atual",use_container_width=True)
+    if save_preset:
+        clean_name=preset_name.strip()
+        if not clean_name:
+            st.error("Dê um nome ao preset.")
+        elif clean_name in PRESETS:
+            st.error("Esse nome é reservado para um preset-base do sistema.")
+        else:
+            st.session_state.custom_presets[clean_name]=st.session_state.weights.copy()
+            st.success(f'Preset "{clean_name}" salvo para esta sessão.')
+            st.rerun()
+
+    if st.session_state.custom_presets:
+        st.markdown("**Seus presets**")
+        cp=st.selectbox("Preset personalizado",list(st.session_state.custom_presets),key="custom_preset_manage")
+        cpa,cpb=st.columns(2)
+        if cpa.button("Aplicar",key="apply_custom",use_container_width=True):
+            st.session_state.weights=st.session_state.custom_presets[cp].copy()
+            st.rerun()
+        if cpb.button("Excluir",key="delete_custom",use_container_width=True):
+            del st.session_state.custom_presets[cp]
+            st.rerun()
 
 elif page=="notas":
     st.subheader("Notas das características")
