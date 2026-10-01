@@ -1,4 +1,4 @@
-# Nota da Lu — comparador racional de notebooks
+# Note da Lu — comparador racional de notebooks
 
 Aplicação em **Python + Streamlit** para comparar notebooks, estabelecer requisitos mínimos e construir um ranking de compra personalizado.
 
